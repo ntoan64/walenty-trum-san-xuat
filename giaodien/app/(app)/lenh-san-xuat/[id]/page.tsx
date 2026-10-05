@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { Coins, PackageOpen, Plus, Scale, Settings2, Trash2, Wrench } from "lucide-react";
+import { Coins, PackageOpen, Pencil, Plus, Scale, Settings2, Trash2, Wrench } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   byId, closeChecklist, canClose, DEFECT_KIND, DEFECTS, isBalanced, knownDefects, isOrderLate, LOSS_ALLOWED, SIZES,
   type Batch, type DefectLine, type ProductionOrder,
@@ -12,10 +13,10 @@ import { Button } from "@/components/ui/button";
 import { useStore, A } from "@/lib/store";
 import { useAction, useConfirmAction } from "@/lib/use-action";
 import { Summary } from "@/components/xf/confirm-provider";
-import { fmtD, fmtDT, nf, pct, vnd } from "@/lib/format";
+import { fmtD, fmtDT, isoDateVN, nf, pct, vnd } from "@/lib/format";
 import { prodOf, repairsOf, wsName } from "@/lib/actions";
 import { balanceOf, fabricFor, issuedFor } from "@/lib/selectors";
-import { EmptyState, NumberField, PageHeader, Panel, StatusPill, TableWrap } from "@/components/xf/basics";
+import { EmptyState, Field, NumberField, PageHeader, Panel, StatusPill, TableWrap } from "@/components/xf/basics";
 import { BalanceBar, BalanceEquation, BalanceLegend, StepProgress } from "@/components/xf/balance";
 import { RepairTable } from "@/components/xf/repair-table";
 import { ConfirmButton } from "@/components/xf/confirm-dialog";
@@ -178,11 +179,120 @@ function LossForm({ o, max }: { o: ProductionOrder; max: number }) {
   );
 }
 
+/* ---------- Admin: sửa lệnh ---------- */
+function EditOrderDialog({ o, onClose }: { o: ProductionOrder; onClose: () => void }) {
+  const { data: s } = useStore();
+  const act = useAction();
+  const beforeCut = o.step === "cut";
+  const [due, setDue] = useState(isoDateVN(o.dueAt));
+  const [ws, setWs] = useState(o.workshop);
+  const [sizes, setSizes] = useState((o.sizes?.length ? o.sizes : [{ size: "M", qty: o.qty }]).map(z => ({ size: z.size, qty: String(z.qty) })));
+  const [busy, setBusy] = useState(false);
+  const total = sizes.reduce((t, z) => t + Math.floor(+z.qty || 0), 0);
+  const save = async () => {
+    setBusy(true);
+    const r = await act("order.admin", A.editOrder, o.id, {
+      dueDate: due,
+      ...(beforeCut && { workshopId: ws, sizes: sizes.map(z => ({ size: z.size, qty: Math.floor(+z.qty || 0) })) }),
+    });
+    setBusy(false);
+    if (r.ok) onClose();
+  };
+  return (
+    <Dialog open onOpenChange={x => { if (!x) onClose(); }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="font-serif text-lg text-brand">Sửa lệnh {o.code}</DialogTitle>
+          <DialogDescription>
+            {beforeCut ? "Lệnh chưa cắt: đổi được xưởng, ngày và số lượng. Phụ liệu tự xuất thêm / hoàn lại phần chênh lệch." : "Lệnh đã cắt: chỉ đổi được ngày dự kiến."}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Ngày dự kiến xong" htmlFor="eo-due">
+            <input id="eo-due" type="date" className="field-input num" value={due} onChange={e => setDue(e.target.value)} />
+          </Field>
+          {beforeCut && (
+            <Field label="Xưởng" htmlFor="eo-ws">
+              <select id="eo-ws" className="field-input" value={ws} onChange={e => setWs(e.target.value)}>
+                {s.workshops.filter(w => w.active || w.id === o.workshop).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+              </select>
+            </Field>
+          )}
+        </div>
+        {beforeCut && (
+          <div>
+            <div className="eyebrow mb-1.5">Số lượng theo size · tổng <span className="num text-brand">{total}</span> (đang {o.qty})</div>
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-2">
+              {sizes.map((z, i) => (
+                <label key={z.size} className="flex flex-col gap-1 rounded-lg bg-surface-2 p-2">
+                  <span className="text-xs font-bold text-brand">{z.size}</span>
+                  <input type="number" min={0} step={1} aria-label={`Số lượng size ${z.size}`} className="field-input num !min-h-9 !bg-surface !py-1.5"
+                    value={z.qty} onChange={e => setSizes(sizes.map((y, j) => (j === i ? { ...y, qty: e.target.value } : y)))} />
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose}>Hủy</Button>
+          <Button onClick={save} disabled={busy}>Lưu thay đổi</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ---------- Admin: hủy lệnh ---------- */
+function CancelOrderDialog({ o, onClose }: { o: ProductionOrder; onClose: () => void }) {
+  const { data: s } = useStore();
+  const act = useAction();
+  const beforeCut = o.step === "cut";
+  const fgQty = s.finishedTxns.filter(t => t.order === o.code).reduce((t, x) => t + x.qty, 0);
+  const [reason, setReason] = useState("");
+  const [returnMaterials, setReturn] = useState(beforeCut);
+  const [removeFinished, setRemove] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    const r = await act("order.admin", A.cancelOrder, o.id, { reason, returnMaterials, removeFinished });
+    setBusy(false);
+    if (r.ok) onClose();
+  };
+  return (
+    <Dialog open onOpenChange={x => { if (!x) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="font-serif text-lg text-bad">Hủy lệnh {o.code}?</DialogTitle>
+          <DialogDescription>Lệnh không bị xóa hẳn: vẫn xem lại được trong mục «Xem lệnh đã hủy» và Lịch sử thao tác, nhưng không thao tác thêm được.</DialogDescription>
+        </DialogHeader>
+        <Field label="Lý do hủy (bắt buộc)" htmlFor="co-reason">
+          <textarea id="co-reason" rows={2} maxLength={1000} className="field-input resize-y" placeholder="VD: Nhập nhầm sản phẩm / số lượng" value={reason} onChange={e => setReason(e.target.value)} />
+        </Field>
+        <label className="flex items-start gap-2 text-[13px]">
+          <input type="checkbox" className="mt-0.5 size-4 accent-[var(--brand)]" checked={returnMaterials} onChange={e => setReturn(e.target.checked)} />
+          <span><b>Hoàn phụ liệu đã xuất về kho</b><br /><span className="text-muted-foreground">{beforeCut ? "Lệnh chưa cắt, nên hoàn lại." : "Lệnh đã cắt: chỉ chọn nếu phụ liệu thực tế chưa dùng."}</span></span>
+        </label>
+        {fgQty > 0 && (
+          <label className="flex items-start gap-2 text-[13px]">
+            <input type="checkbox" className="mt-0.5 size-4 accent-[var(--brand)]" checked={removeFinished} onChange={e => setRemove(e.target.checked)} />
+            <span><b>Trừ {fgQty} thành phẩm đã nhập kho</b> từ lệnh này<br /><span className="text-muted-foreground">Chỉ chọn khi số đó nhập sai, hàng thực tế không có.</span></span>
+          </label>
+        )}
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose}>Không hủy</Button>
+          <Button variant="destructive" onClick={save} disabled={busy || !reason.trim()}>Hủy lệnh</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: s, can } = useStore();
   const act = useAction();
   const actC = useConfirmAction();
+  const [adminDialog, setAdminDialog] = useState<"edit" | "cancel" | null>(null);
   const o = byId(s.orders, decodeURIComponent(id));
   const now = new Date();
 
@@ -209,7 +319,11 @@ export default function OrderDetailPage() {
   const lossPct = o.loss / o.qty;
 
   const blocks: React.ReactNode[] = [];
-  if (o.step === "cut") {
+  if (o.cancelled) {
+    blocks.push(
+      <ActionBox key="cancelled" tone="warn" title={`Lệnh đã hủy ngày ${fmtD(o.cancelled.at)}`} desc={<>Bởi {o.cancelled.by}. Lý do: <b>{o.cancelled.reason}</b></>} />,
+    );
+  } else if (o.step === "cut") {
     blocks.push(
       <ActionBox key="prep" title="Nguyên phụ liệu cần chuẩn bị" desc={`Đã xuất kho theo định mức cho ${o.qty} cái. Chuẩn bị đủ để giao ${wsName(s, o.workshop)} cắt.`}>
         {issuedFor(s, o).length ? (
@@ -301,9 +415,19 @@ export default function OrderDetailPage() {
             {wsName(s, o.workshop)} · tạo {fmtD(o.createdAt)} · dự kiến xong {fmtD(o.dueAt)}
             {o.sizes?.map(z => <StatusPill key={z.size} tone="muted"><b className="text-brand">{z.size}</b> <span className="num">{z.qty}</span></StatusPill>)}
             {late && <StatusPill tone="bad" dot>Trễ hạn</StatusPill>}
+            {o.cancelled && <StatusPill tone="bad" dot>Đã hủy</StatusPill>}
           </span>
         }
+        aside={can("order.admin") && !o.cancelled ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="eyebrow">Admin</span>
+            {o.step !== "done" && <Button size="sm" variant="secondary" onClick={() => setAdminDialog("edit")}><Pencil /> Sửa lệnh</Button>}
+            <Button size="sm" variant="destructive" onClick={() => setAdminDialog("cancel")}><Trash2 /> Hủy lệnh</Button>
+          </div>
+        ) : undefined}
       />
+      {adminDialog === "edit" && <EditOrderDialog o={o} onClose={() => setAdminDialog(null)} />}
+      {adminDialog === "cancel" && <CancelOrderDialog o={o} onClose={() => setAdminDialog(null)} />}
       <StepProgress step={o.step} />
 
       <div className="grid grid-cols-1 items-start gap-5 min-[1000px]:grid-cols-2">

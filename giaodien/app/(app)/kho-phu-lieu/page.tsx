@@ -199,10 +199,10 @@ export default function MaterialsPage() {
                   <tr key={t.id}>
                     <td className="num">{fmtD(t.at)}</td>
                     <td className="num">{m.code}</td>
-                    <td>{t.type === "in" ? <StatusPill tone="ok">Nhập</StatusPill> : <StatusPill tone="muted">Xuất</StatusPill>}</td>
-                    <td className="r num">{t.type === "in" ? "+" : "−"}{nf(t.qty, 2)}</td>
+                    <td>{t.type === "in" ? <StatusPill tone="ok">Nhập</StatusPill> : t.type === "adjust" ? <StatusPill tone="info">Hoàn kho</StatusPill> : <StatusPill tone="muted">Xuất</StatusPill>}</td>
+                    <td className="r num">{t.type === "out" ? "−" : "+"}{nf(t.qty, 2)}</td>
                     <td className="r num">{t.type === "in" ? vnd(t.price ?? 0) : ""}</td>
-                    <td className={t.type === "out" ? "num" : ""}>{t.type === "in" ? t.supplier : t.order}</td>
+                    <td className={t.type === "in" ? "" : "num"}>{t.type === "in" ? t.supplier : t.order}{t.reason && <div className="font-sans text-xs text-muted-foreground">{t.reason}</div>}</td>
                     <td className="r num">{nf(t.stockAfter, 2)}</td>
                     <td className="r num">{t.type === "in" ? vnd(t.avgAfter) : ""}</td>
                     <td className="text-muted-foreground">{t.by}</td>

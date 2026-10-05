@@ -2,7 +2,7 @@
 // Mỗi hàm nhận bản nháp state (đã clone) và sửa trực tiếp; trả lỗi thì bản nháp bị bỏ.
 import {
   applyImport, applyIssue, byId, calcBalance, canClose, DAY, REPAIR_DUE_DAYS,
-  MATERIAL_CATEGORIES, MATERIAL_STATUS, nextMaterialCode, okLevel, PRODUCT_STATUS, needFor, shortages, unitCost, unusableMaterials, validateDefectLines, validateQC, validateRequc,
+  MATERIAL_CATEGORIES, MATERIAL_STATUS, nextMaterialCode, okLevel, isLive, PRODUCT_STATUS, needFor, shortages, unitCost, unusableMaterials, validateDefectLines, validateQC, validateRequc,
   type BomLine, type DefectLine, type EventType, type SizeQty, type ItemStatus, type Material, type MaterialCategory, type ProductionOrder, type Role, type Action,
 } from "./index";
 import type { DataState } from "./state";
@@ -65,7 +65,8 @@ function checkLow(c: Ctx, m: Material) {
   }
 }
 function getOrder(c: Ctx, id: string) {
-  return byId(c.s.orders, id);
+  const o = byId(c.s.orders, id);
+  return o?.cancelled ? undefined : o; // lệnh đã hủy không thao tác được nữa
 }
 
 /* ---------- kho phụ liệu ---------- */
@@ -166,7 +167,7 @@ export function toggleWorkshop(c: Ctx, id: string): Result {
   const w = byId(c.s.workshops, id);
   if (!w) return fail("Không tìm thấy xưởng");
   if (w.active && (c.s.customerRepairs ?? []).some(r => r.workshop === id && r.status === "sent")) return fail(`${w.name} đang giữ đồ khách gửi sửa`);
-  if (w.active && c.s.orders.some(o => o.workshop === id && o.step !== "done")) return fail(`${w.name} còn lệnh đang chạy, xong lệnh rồi mới ngừng được`);
+  if (w.active && c.s.orders.some(o => o.workshop === id && isLive(o))) return fail(`${w.name} còn lệnh đang chạy, xong lệnh rồi mới ngừng được`);
   w.active = !w.active;
   return ok(w.active ? `Đã hợp tác lại với ${w.name}` : `Đã ngừng hợp tác với ${w.name}`);
 }
@@ -451,6 +452,101 @@ export function closeOrder(c: Ctx, orderId: string): Result {
   return ok(`Đã đóng lệnh ${o.code}`);
 }
 
+/* ---------- admin: sửa / hủy lệnh ---------- */
+// Hoàn phụ liệu về kho: ghi "adjust" (không đổi giá BQ vì không phải mua mới)
+function returnMaterial(c: Ctx, m: Material, qty: number, code: string, reason: string) {
+  if (qty <= 0) return;
+  m.stock = Math.round((m.stock + qty) * 100) / 100;
+  c.s.materialTxns.push({ id: uid(c, "t"), material: m.id, type: "adjust", qty, order: code, reason, stockAfter: m.stock, avgAfter: m.avgPrice, by: c.me, at: tick(c) });
+}
+
+export function cancelOrder(c: Ctx, id: string, a: { reason: string; returnMaterials: boolean; removeFinished: boolean }): Result {
+  const o = byId(c.s.orders, id);
+  if (!o) return fail("Không tìm thấy lệnh");
+  if (o.cancelled) return fail("Lệnh đã hủy rồi");
+  const reason = a.reason.trim();
+  if (!reason) return fail("Ghi lý do hủy lệnh");
+  if (reason.length > LIMITS.text) return fail("Lý do quá dài");
+  // phụ liệu đã xuất cho lệnh (trừ phần đã hoàn trước đó)
+  if (a.returnMaterials) {
+    const net = new Map<string, number>();
+    for (const t of c.s.materialTxns) if (t.order === o.code) {
+      if (t.type === "out") net.set(t.material, (net.get(t.material) ?? 0) + t.qty);
+      if (t.type === "adjust") net.set(t.material, (net.get(t.material) ?? 0) - t.qty);
+    }
+    for (const [mid, qty] of net) { const m = byId(c.s.materials, mid); if (m) { returnMaterial(c, m, Math.round(qty * 100) / 100, o.code, `Hoàn kho do hủy lệnh ${o.code}`); checkLow(c, m); } }
+  }
+  // trừ thành phẩm đã nhập từ lệnh này
+  if (a.removeFinished) {
+    const qty = c.s.finishedTxns.filter(t => t.order === o.code).reduce((t, x) => t + x.qty, 0);
+    if (qty > 0) c.s.finishedTxns.push({ id: uid(c, "f"), product: o.product, qty: -qty, order: o.code, note: `Trừ do hủy lệnh ${o.code}`, by: c.me, at: tick(c) });
+  }
+  // phiếu sửa còn mở → đóng
+  for (const r of c.s.repairs) if (r.order === o.id && r.status !== "closed") {
+    r.status = "closed";
+    r.history.push({ at: tick(c), by: c.me, text: `Đóng do hủy lệnh ${o.code}` });
+  }
+  o.cancelled = { at: c.now, by: c.me, reason };
+  notify(c, ["quanly", "kho"], `🗑️ Đã hủy lệnh ${o.code} (${prodOf(c.s, o).name} × ${o.qty}).\nLý do: ${reason}`);
+  return ok(`Đã hủy lệnh ${o.code}`);
+}
+
+export function editOrder(c: Ctx, id: string, a: { workshopId?: string; dueDate?: string; sizes?: SizeQty[] }): Result {
+  const o = byId(c.s.orders, id);
+  if (!o) return fail("Không tìm thấy lệnh");
+  if (o.cancelled) return fail("Lệnh đã hủy, không sửa được");
+  if (o.step === "done") return fail("Lệnh đã hoàn thành, không sửa được");
+  const changes: string[] = [];
+
+  if (a.dueDate) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(a.dueDate)) return fail("Ngày dự kiến không hợp lệ");
+    const dueAt = new Date(`${a.dueDate}T23:59:59+07:00`);
+    if (isNaN(dueAt.getTime()) || dueAt.getTime() > c.now.getTime() + LIMITS.dueDays * DAY) return fail("Ngày dự kiến không hợp lệ");
+    if (dueAt.getTime() !== o.dueAt.getTime()) { o.dueAt = dueAt; changes.push(`hạn ${fmtD(dueAt)}`); }
+  }
+
+  const onlyBeforeCut = (what: string) => fail(`Lệnh đã cắt, không đổi ${what} được nữa (chỉ đổi ngày dự kiến)`);
+  if (a.workshopId && a.workshopId !== o.workshop) {
+    if (o.step !== "cut") return onlyBeforeCut("xưởng");
+    const w = byId(c.s.workshops, a.workshopId);
+    if (!w || !w.active) return fail("Chọn xưởng đang hợp tác");
+    o.workshop = w.id;
+    changes.push(`xưởng ${w.name}`);
+  }
+
+  if (a.sizes) {
+    const sizes = a.sizes.map(x => ({ size: x.size.trim().toUpperCase(), qty: x.qty })).filter(x => x.size && x.qty);
+    const same = JSON.stringify(sizes) === JSON.stringify(o.sizes ?? []);
+    if (!same) {
+      if (o.step !== "cut") return onlyBeforeCut("số lượng");
+      if (!sizes.length) return fail("Nhập số lượng ít nhất 1 size");
+      if (sizes.some(x => !isInt(x.qty) || x.qty < 0)) return fail("Số lượng mỗi size phải là số nguyên");
+      if (sizes.length > LIMITS.sizes || new Set(sizes.map(x => x.size)).size !== sizes.length) return fail("Size bị trùng hoặc quá nhiều");
+      const qty = sizes.reduce((t, x) => t + x.qty, 0);
+      if (qty > LIMITS.orderQty) return fail(`Một lệnh tối đa ${nf(LIMITS.orderQty)} cái`);
+      // xuất thêm / hoàn lại phần chênh lệch phụ liệu theo định mức
+      const p = prodOf(c.s, o);
+      const deltas = p.bom.map(b => ({ m: byId(c.s.materials, b.material)!, d: Math.round(b.qtyPerUnit * (qty - o.qty) * 100) / 100 }));
+      const short = deltas.filter(x => x.d > 0 && x.d > x.m.stock);
+      if (short.length) return fail(`Không đủ phụ liệu để tăng số lượng: ${short.map(x => `${x.m.code} cần thêm ${nf(x.d, 1)}, còn ${nf(x.m.stock, 1)}`).join("; ")}`);
+      for (const { m, d } of deltas) {
+        if (d > 0) {
+          applyIssue(m, d);
+          c.s.materialTxns.push({ id: uid(c, "t"), material: m.id, type: "out", qty: d, order: o.code, stockAfter: m.stock, avgAfter: m.avgPrice, by: c.me, at: tick(c) });
+        } else returnMaterial(c, m, -d, o.code, `Hoàn kho do giảm số lượng lệnh ${o.code}`);
+        checkLow(c, m);
+      }
+      changes.push(`số lượng ${o.qty} → ${qty} (${sizes.map(x => `${x.size}:${x.qty}`).join(" ")})`);
+      o.qty = qty;
+      o.sizes = sizes;
+    }
+  }
+
+  if (!changes.length) return fail("Không có gì thay đổi");
+  notify(c, ["quanly", "kho"], `✏️ Đã sửa lệnh ${o.code}: ${changes.join(", ")}.`);
+  return ok(`Đã sửa ${o.code}: ${changes.join(", ")}`);
+}
+
 /* ---------- phiếu trả sửa ---------- */
 export function repairStatus(c: Ctx, id: string, to: "received" | "returned"): Result {
   const r = byId(c.s.repairs, id);
@@ -577,6 +673,8 @@ export const ACTIONS: Record<string, [Action | null, (c: Ctx, ...args: any[]) =>
   reportLoss: ["loss.report", reportLoss, "Ghi hao hụt"],
   approveLoss: ["loss.approve", approveLoss, "Duyệt hao hụt"],
   closeOrder: ["order.close", closeOrder, "Đóng lệnh"],
+  editOrder: ["order.admin", editOrder, "Sửa lệnh (admin)"],
+  cancelOrder: ["order.admin", cancelOrder, "Hủy lệnh (admin)"],
   repairStatus: ["repair.status", repairStatus, "Cập nhật phiếu sửa"],
   requc: ["repair.requc", requc, "QC lại phiếu sửa"],
   sendReport: ["report.send", sendReport, "Gửi báo cáo Telegram"],

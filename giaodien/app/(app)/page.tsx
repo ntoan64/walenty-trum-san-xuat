@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, ListChecks, Workflow } from "lucide-react";
-import { canView, sum, type Screen } from "@core";
+import { canView, isLive, sum, type Screen } from "@core";
 import { useStore } from "@/lib/store";
 import { fmtD, fmtWeekday, nf } from "@/lib/format";
 import { prodOf, wsName } from "@/lib/actions";
@@ -20,7 +20,7 @@ const FLOW = [
 export default function OverviewPage() {
   const { data: s, role } = useStore();
   const now = new Date();
-  const open = s.orders.filter(o => o.step !== "done");
+  const open = s.orders.filter(isLive);
   const bs = open.map(o => ({ o, b: balanceOf(s, o) }));
   const atWs = sum(bs, x => x.b.notReturned + x.b.inRepair);
   const pq = sum(bs, x => x.b.pendingQC);

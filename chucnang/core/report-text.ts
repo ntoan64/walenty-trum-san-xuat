@@ -9,7 +9,8 @@ export const periodStart = (p: Period, now = new Date()) =>
 
 // Nội dung tin Telegram cho báo cáo (cron 8h sáng dùng lại hàm này)
 export function reportText(s: DataState, p: Period, now = new Date()) {
-  const a = aggregate(inRange(s.events, periodStart(p, now)));
+  const cancelled = new Set(s.orders.filter(o => o.cancelled).map(o => o.id));
+  const a = aggregate(inRange(s.events, periodStart(p, now)).filter(e => !cancelled.has(e.order)));
   const open = s.repairs.filter(r => r.status !== "closed");
   const late = open.filter(r => isRepairLate(r, now));
   const low = s.materials.filter(m => m.stock < m.minStock);

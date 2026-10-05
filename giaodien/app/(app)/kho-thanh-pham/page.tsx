@@ -65,8 +65,8 @@ export default function FinishedPage() {
                   <td className="num">{fmtDT(h.at)}</td>
                   <td>{byId(s.products, h.product)?.name}</td>
                   <td className="num">{h.order}</td>
-                  <td className="r num font-semibold text-ok">+{nf(h.qty)}</td>
-                  <td>{h.repair ? <StatusPill tone="warn">Sau sửa · {h.repair}</StatusPill> : <StatusPill tone="ok">QC đợt nhận</StatusPill>}</td>
+                  <td className={`r num font-semibold ${h.qty < 0 ? "text-bad" : "text-ok"}`}>{h.qty > 0 ? "+" : ""}{nf(h.qty)}</td>
+                  <td>{h.note ? <StatusPill tone="bad">{h.note}</StatusPill> : h.repair ? <StatusPill tone="warn">Sau sửa · {h.repair}</StatusPill> : <StatusPill tone="ok">QC đợt nhận</StatusPill>}</td>
                 </tr>
               ))}
             </tbody>

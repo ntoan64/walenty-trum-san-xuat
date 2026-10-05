@@ -83,6 +83,7 @@ export interface FinishedTxn {
   qty: number
   order: string
   repair?: string
+  note?: string // vd "Trừ do hủy lệnh"
   by: string
   at: Date
 }
@@ -140,6 +141,7 @@ export interface ProductionOrder {
   createdAt: Date
   closedAt?: Date | null
   closedBy?: string
+  cancelled?: { at: Date; by: string; reason: string } | null // admin hủy lệnh (không xóa cứng)
 }
 
 export type RepairStatus = 'sent' | 'received' | 'returned' | 'closed'

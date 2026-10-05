@@ -1,4 +1,4 @@
-import { calcBalance, isRepairLate, sum, type ProductionOrder } from "@core";
+import { calcBalance, isLive, isRepairLate, sum, type ProductionOrder } from "@core";
 import type { DataState } from "@core/state";
 import { repairsOf } from "./actions";
 
@@ -15,7 +15,7 @@ export const lateRepairs = (s: DataState, now: Date) => s.repairs.filter(r => is
 export const openRepairs = (s: DataState) => s.repairs.filter(r => r.status !== "closed");
 export const lowMaterials = (s: DataState) => s.materials.filter(m => m.stock < m.minStock);
 export const pendingBatches = (s: DataState) =>
-  s.orders.flatMap(o => o.batches.filter(b => !b.qc).map(b => ({ o, b })));
+  s.orders.filter(o => !o.cancelled).flatMap(o => o.batches.filter(b => !b.qc).map(b => ({ o, b })));
 
 export function navBadges(s: DataState, now: Date): Partial<Record<string, number>> {
   return {
@@ -23,7 +23,7 @@ export function navBadges(s: DataState, now: Date): Partial<Record<string, numbe
     materials: lowMaterials(s).length,
     // đồ khách: chờ gửi xưởng + chờ trả khách + trễ hẹn
     customer: (s.customerRepairs ?? []).filter(r => r.status === "received" || r.status === "returned" || (r.status !== "done" && r.promisedAt < now)).length,
-    orders: s.orders.filter(o => o.step !== "done" && o.loss > 0 && !o.lossApproved).length,
+    orders: s.orders.filter(o => isLive(o) && o.loss > 0 && !o.lossApproved).length,
   };
 }
 

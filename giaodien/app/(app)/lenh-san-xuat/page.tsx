@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { ChevronDown, Plus } from "lucide-react";
-import { byId, DAY, needFor, shortages, sum, unitCost, unusableMaterials, type Step } from "@core";
+import { byId, DAY, isLive, needFor, shortages, sum, unitCost, unusableMaterials, type Step } from "@core";
 import { Button } from "@/components/ui/button";
 import { useStore, A } from "@/lib/store";
 import { matches } from "@/lib/search";
@@ -164,7 +164,9 @@ export default function OrdersPage() {
     const p = byId(s.products, o.product), w = byId(s.workshops, o.workshop);
     return matches(q, o.code, p?.name, p?.sku, w?.name, o.sizes?.map(z => z.size).join(" "));
   });
-  const open = s.orders.filter(o => o.step !== "done");
+  const open = s.orders.filter(isLive);
+  const [showCancelled, setShowCancelled] = useDraft("orders:cancelled", false);
+  const cancelledList = s.orders.filter(o => o.cancelled);
   const units = sum(open, o => o.qty);
   const late = open.filter(o => o.dueAt < now).length;
   const pq = sum(open, o => balanceOf(s, o).pendingQC);
@@ -186,11 +188,23 @@ export default function OrdersPage() {
       <CreateOrder />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <SearchBox value={q} onChange={setQ} placeholder="Tìm mã lệnh, sản phẩm, SKU, xưởng…" label="Tìm lệnh sản xuất" className="sm:w-80" />
-        {q && <span className="text-[13px] text-muted-foreground">Tìm thấy <b className="num text-fg">{found.length}</b> lệnh</span>}
+        <div className="flex items-center gap-3">
+          {q && <span className="text-[13px] text-muted-foreground">Tìm thấy <b className="num text-fg">{found.filter(o => !o.cancelled).length}</b> lệnh</span>}
+          {cancelledList.length > 0 && (
+            <button type="button" onClick={() => setShowCancelled(!showCancelled)} className="text-[13px] font-semibold text-muted-foreground hover:text-brand">
+              {showCancelled ? "Ẩn" : "Xem"} lệnh đã hủy ({cancelledList.length})
+            </button>
+          )}
+        </div>
       </div>
+      {showCancelled && cancelledList.length > 0 && (
+        <div className="reveal grid grid-cols-1 gap-2 rounded-xl bg-surface-2 p-2.5 sm:grid-cols-2 min-[1400px]:grid-cols-4">
+          {found.filter(o => o.cancelled).map(o => <OrderCard key={o.id} s={s} o={o} now={now} />)}
+        </div>
+      )}
       <div className="grid grid-cols-1 items-start gap-3 min-[560px]:grid-cols-2 min-[1400px]:grid-cols-4">
         {COLS.map(([k, label]) => {
-          const list = found.filter(o => o.step === k);
+          const list = found.filter(o => o.step === k && !o.cancelled);
           return (
             <div key={k} className="flex min-w-0 flex-col gap-2 rounded-xl bg-surface-low p-2.5">
               <div className="flex items-center justify-between px-1 pt-0.5 pb-1">

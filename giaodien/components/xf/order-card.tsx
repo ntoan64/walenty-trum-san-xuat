@@ -34,7 +34,7 @@ export function OrderCard({ s, o, now }: { s: DataState; o: ProductionOrder; now
     >
       <div className="flex items-center justify-between gap-2">
         <span className="num text-[12px] font-bold text-brand">{o.code}</span>
-        <StatusPill tone="muted">Hạn {fmtD(o.dueAt)}</StatusPill>
+        {o.cancelled ? <StatusPill tone="bad">Đã hủy</StatusPill> : <StatusPill tone="muted">Hạn {fmtD(o.dueAt)}</StatusPill>}
       </div>
       <div className="font-serif leading-snug font-semibold">{prodOf(s, o).name}</div>
       <div className="text-xs text-muted-foreground">

@@ -19,7 +19,8 @@ export default function ReportsPage() {
   const [period, setPeriod] = useDraft<Period>("report:period", "week");
   const now = new Date();
   const st = periodStart(period, now);
-  const evs = inRange(s.events, st);
+  const cancelled = new Set(s.orders.filter(o => o.cancelled).map(o => o.id));
+  const evs = inRange(s.events, st).filter(e => !cancelled.has(e.order)); // bỏ lệnh đã hủy
   const a = aggregate(evs);
   const open = openRepairs(s);
   const low = lowMaterials(s);

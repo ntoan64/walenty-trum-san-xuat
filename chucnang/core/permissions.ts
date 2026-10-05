@@ -38,7 +38,7 @@ export type Action =
   | 'order.create' | 'order.cut' | 'order.receive'
   | 'qc.save' | 'loss.report' | 'loss.approve' | 'order.close'
   | 'repair.status' | 'repair.requc'
-  | 'report.send' | 'user.manage' | 'notify.send' | 'workshop.manage' | 'customer.repair'
+  | 'report.send' | 'user.manage' | 'notify.send' | 'workshop.manage' | 'customer.repair' | 'order.admin'
 
 // Quản lý kho và phó kho dùng toàn bộ chức năng; QC chỉ làm phần QC và không xem giá
 export const ACTION_ROLES: Record<Action, Role[]> = {
@@ -62,6 +62,7 @@ export const ACTION_ROLES: Record<Action, Role[]> = {
   'user.manage': ['quanly'], // chỉ admin cấp tài khoản, mật khẩu
   'notify.send': FULL,
   'workshop.manage': FULL,
+  'order.admin': ['quanly'], // chỉ admin sửa / hủy lệnh
   'customer.repair': ROLES, // cả QC nhận / theo dõi đồ khách gửi sửa
 }
 

@@ -49,7 +49,10 @@ export function closeChecklist(order: ProductionOrder, b: Balance): [boolean, st
   ]
 }
 
-export const isOrderLate = (o: ProductionOrder, now: Date) => o.step !== 'done' && o.dueAt < now
+export const isOrderLate = (o: ProductionOrder, now: Date) => !o.cancelled && o.step !== 'done' && o.dueAt < now
+
+// Lệnh đang chạy: chưa hoàn thành, chưa bị hủy
+export const isLive = (o: ProductionOrder) => !o.cancelled && o.step !== 'done'
 
 // Quá hạn = chưa trả lại mà đã qua hạn
 export const isRepairLate = (r: RepairTicket, now: Date) =>
