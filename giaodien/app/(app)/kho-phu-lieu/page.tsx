@@ -69,7 +69,7 @@ export default function MaterialsPage() {
   const total = sum(s.materials, m => m.stock * m.avgPrice);
   const low = lowMaterials(s).filter(m => m.status === "active").length;
   const [q, setQ] = useDraft("npl:q", "");
-  const list = s.materials.filter(m => (cat === "all" || m.category === cat) && matches(q, m.code, m.name, MATERIAL_CATEGORIES[m.category], m.unit));
+  const list = s.materials.filter(m => (cat === "all" || m.category === cat) && matches(q, m.code, m.name, MATERIAL_CATEGORIES[m.category], m.unit, m.supplier, m.supplierCode, m.note));
   const manage = can("material.manage");
   const hist = s.materialTxns
     .filter(t => filter === "all" || t.material === filter)
@@ -155,7 +155,7 @@ export default function MaterialsPage() {
                 return (
                   <tr key={m.id} className={m.status === "discontinued" ? "opacity-60" : ""}>
                     <td className="num font-bold text-brand">{m.code}</td>
-                    <td className="font-medium">{m.name}</td>
+                    <td className="font-medium">{m.name}{(m.supplier || m.supplierCode) && <div className="text-[11.5px] font-normal text-subtle" title={m.note}>{[m.supplier, m.supplierCode].filter(Boolean).join(" · ")}</div>}</td>
                     <td className="text-brown">{MATERIAL_CATEGORIES[m.category]}</td>
                     <td>{m.unit}</td>
                     <td className={`r num font-semibold ${lv === "low" ? "text-bad" : ""}`}>{nf(m.stock, 1)}</td>

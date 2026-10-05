@@ -186,7 +186,9 @@ describe('nhập Sapo', () => {
     A.createWorkshop(c, { name: 'Xưởng A', area: '', contactName: '', phone: '0903112456' })
     const due = new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10)
     const r = A.createOrder(c, { productId: s.products[0].id, workshopId: s.workshops[0].id, sizes: [{ size: 'S', qty: 1 }], dueDate: due })
-    expect(r.ok ? '' : r.error).toMatch(/định mức/)
+    expect(r.ok ? '' : r.error).toMatch(/chọn màu/) // nhiều màu phải chọn màu
+    const r2 = A.createOrder(c, { productId: s.products[0].id, workshopId: s.workshops[0].id, sizes: [{ size: 'S', qty: 1 }], dueDate: due, color: 'Beige' })
+    expect(r2.ok ? '' : r2.error).toMatch(/định mức/)
   })
 })
 
@@ -197,5 +199,66 @@ describe('ảnh lỗi QC', () => {
     expect(PHOTO_RE.test('https://evil.example.com/x.jpg')).toBe(false)
     expect(PHOTO_RE.test('javascript:alert(1)')).toBe(false)
     expect(PHOTO_RE.test('https://res.cloudinary.com/x/image/upload/a.jpg"><script>')).toBe(false)
+  })
+})
+
+describe('tính giá theo file TÍNH GIÁ SP', () => {
+  it('công may + vải chính + lót + phụ liệu = đúng ô Giá cost trong Excel', async () => {
+    const { costBreakdown, formulaPrice, costRatio } = await import('./inventory')
+    const p = {
+      id: 'p', sku: 'M-1', name: '2 khuy blazer Cotton', laborCost: 0, bom: [], status: 'active' as const,
+      costing: { '': { labor: 260000, fabric: { qty: 1.5, price: 53000 }, lining: { qty: 1.5, price: 26500 }, acc: { tag: 3500, buttons: 6250 }, ratio: 0.32, listPrice: 1350000 } },
+    }
+    const b = costBreakdown(p, [])
+    expect(b.total).toBe(389000)
+    expect(b.fabricFrom).toBe('file')
+    expect(Math.round(formulaPrice(b.total, 0.32))).toBe(1312875) // ô "Giá bán công thức"
+    expect(costRatio(b.total, 1350000)).toBeCloseTo(0.3112, 4) // ô "Cost thực tế"
+  })
+  it('có định mức theo màu thì vải tính theo kho, cúc trong định mức không cộng lại', async () => {
+    const { costBreakdown } = await import('./inventory')
+    const mats = [
+      { id: 'v', code: 'VC-1', category: 'vai', name: 'vải', unit: 'mét', stock: 10, avgPrice: 50000, totalImportQty: 0, totalImportCost: 0, minStock: 0, status: 'active' },
+      { id: 'c', code: 'CUC-1', category: 'nut', name: 'cúc', unit: 'cái', stock: 10, avgPrice: 3000, totalImportQty: 0, totalImportCost: 0, minStock: 0, status: 'active' },
+    ] as Material[]
+    const p = {
+      id: 'p', sku: 'M-1', name: 'x', laborCost: 0, bom: [], status: 'active' as const,
+      variants: [{ size: 'S', color: 'Đen', sku: 'A1' }, { size: 'S', color: 'Trắng', sku: 'A2' }],
+      bomByColor: { 'Đen': [{ material: 'v', qtyPerUnit: 1.5 }, { material: 'c', qtyPerUnit: 2 }] },
+      costing: { '': { labor: 260000, acc: { tag: 3500, buttons: 6250 } } },
+    }
+    const den = costBreakdown(p, mats, 'Đen')
+    expect(den.fabricFrom).toBe('bom')
+    expect(den.total).toBe(75000 + 6000 + 260000 + 3500) // cúc lấy theo kho, bỏ 6250 của file
+    expect(costBreakdown(p, mats, 'Trắng').fabricFrom).toBe('file')
+  })
+})
+
+describe('đồng bộ file NVL', () => {
+  it('tồn đầu + nhập − xuất theo ngày, tồn âm đưa về 0, chạy lại bị chặn', async () => {
+    const { importNvl } = await import('./actions')
+    const { createBaseState } = await import('./state')
+    const s = createBaseState()
+    const c = { s, me: 'test', now: new Date('2026-10-05T12:00:00Z'), notes: [] } as never
+    const r = importNvl(c, {
+      openingDate: '2025-09-30',
+      materials: [
+        { code: 'VC-0001', name: 'Cotton đen', unit: 'mét', category: 'vai', price: 53000, opening: 10 },
+        { code: 'VC-0002', name: 'Cotton trắng', unit: 'mét', category: 'vai', price: 53000, opening: 0 },
+      ],
+      moves: [
+        { code: 'VC-0001', type: 'in', qty: 5, date: '2025-10-02' },
+        { code: 'VC-0001', type: 'out', qty: 3, date: '2025-10-03' },
+        { code: 'VC-0002', type: 'out', qty: 2, date: '2025-10-03' },
+      ],
+      boms: [],
+    })
+    expect(r.ok).toBe(true)
+    const m1 = s.materials.find(m => m.code === 'VC-0001')!, m2 = s.materials.find(m => m.code === 'VC-0002')!
+    expect(m1.stock).toBe(12)
+    expect(m1.avgPrice).toBe(53000)
+    expect(m2.stock).toBe(0)
+    expect(s.materialTxns.filter(t => t.material === m1.id && t.type === 'in').reduce((t, x) => t + x.qty * (x.price ?? 0), 0)).toBe(5 * 53000)
+    expect(importNvl(c, { openingDate: '2025-09-30', materials: [{ code: 'VC-0001', name: 'x', unit: 'mét', category: 'vai', price: 1, opening: 0 }], moves: [], boms: [] }).ok).toBe(false)
   })
 })

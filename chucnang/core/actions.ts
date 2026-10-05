@@ -2,8 +2,8 @@
 // Mỗi hàm nhận bản nháp state (đã clone) và sửa trực tiếp; trả lỗi thì bản nháp bị bỏ.
 import {
   applyImport, applyIssue, byId, calcBalance, canClose, DAY, REPAIR_DUE_DAYS,
-  MATERIAL_CATEGORIES, MATERIAL_STATUS, nextMaterialCode, okLevel, isLive, PRODUCT_STATUS, needFor, shortages, unitCost, unusableMaterials, sizeProgress, validateDefectLines, validateQC, validateRequc,
-  type BomLine, type DefectLine, type EventType, type SizeQty, type ItemStatus, type Material, type MaterialCategory, type ProductionOrder, type ProductVariant, type Role, type Action,
+  MATERIAL_CATEGORIES, MATERIAL_STATUS, nextMaterialCode, colorsOf, forColor, okLevel, isLive, PRODUCT_STATUS, needFor, shortages, unitCost, unusableMaterials, sizeProgress, validateDefectLines, validateQC, validateRequc,
+  type BomLine, type Costing, type WorkshopRate, type DefectLine, type EventType, type SizeQty, type ItemStatus, type Material, type MaterialCategory, type ProductionOrder, type ProductVariant, type Role, type Action,
 } from "./index";
 import type { DataState } from "./state";
 import { buildReminders } from "./reminders";
@@ -345,7 +345,8 @@ export function importSapo(c: Ctx, items: SapoItem[]): Result {
   return ok(`Sapo: thêm ${created} mẫu, cập nhật ${updated} mẫu${skipped.length ? `, bỏ qua ${skipped.length} (${skipped.slice(0, 3).join("; ")})` : ""}`);
 }
 
-export function setProductBom(c: Ctx, id: string, a: { laborCost: number; bom: BomLine[] }): Result {
+// color: lưu định mức riêng cho màu đó (vải khác màu); bỏ trống = định mức chung
+export function setProductBom(c: Ctx, id: string, a: { laborCost: number; bom: BomLine[]; color?: string }): Result {
   const p = byId(c.s.products, id);
   if (!p) return fail("Không tìm thấy sản phẩm");
   if (!(a.laborCost >= 0) || a.laborCost > LIMITS.labor) return fail("Tiền công may không hợp lệ");
@@ -355,9 +356,115 @@ export function setProductBom(c: Ctx, id: string, a: { laborCost: number; bom: B
   if (bom.some(l => !(l.qtyPerUnit > 0) || l.qtyPerUnit > LIMITS.bomQty)) return fail("Định mức mỗi phụ liệu phải lớn hơn 0");
   if (new Set(bom.map(l => l.material)).size !== bom.length) return fail("Một phụ liệu bị chọn 2 lần");
   if (bom.some(l => !byId(c.s.materials, l.material))) return fail("Phụ liệu không tồn tại");
-  p.bom = bom;
+  const color = a.color?.trim();
+  if (color) {
+    if (!colorsOf(p).includes(color)) return fail(`Màu ${color} không có trong sản phẩm`);
+    p.bomByColor = { ...(p.bomByColor ?? {}), [color]: bom };
+  } else p.bom = bom;
   p.laborCost = a.laborCost;
-  return ok(`${p.name}: đã lưu định mức (${bom.length} phụ liệu)`);
+  return ok(`${p.name}${color ? ` (${color})` : ""}: đã lưu định mức (${bom.length} phụ liệu)`);
+}
+
+// ----- Đồng bộ file TÍNH GIÁ SP: xưởng (địa chỉ, bảng giá gia công) + bảng tính giá từng sản phẩm -----
+export interface CostingFile {
+  workshops: { name: string; area: string; contactName: string; phone: string; address?: string; note?: string; aliases: string[]; rates: WorkshopRate[] }[]
+  costings: { product: string; color?: string; costing: Costing }[]
+}
+export function importCosting(c: Ctx, f: CostingFile): Result {
+  if (!f.workshops?.length && !f.costings?.length) return fail("File không có dữ liệu");
+  const key = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/gi, "d").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  let created = 0;
+  for (const x of f.workshops ?? []) {
+    const names = [x.name, ...(x.aliases ?? [])].map(key);
+    let w = c.s.workshops.find(w => names.includes(key(w.name)) || (w.aliases ?? []).some(a => names.includes(key(a))));
+    if (!w) { w = { id: uid(c, "w"), name: x.name.trim(), area: "", contactName: "", phone: "", active: true }; c.s.workshops.push(w); created++; }
+    Object.assign(w, {
+      area: x.area || w.area, contactName: x.contactName || w.contactName, phone: x.phone || w.phone,
+      address: x.address || w.address, note: x.note || w.note,
+      aliases: [...new Set([...(w.aliases ?? []), ...(x.aliases ?? [])])].slice(0, 20),
+      rates: (x.rates ?? []).slice(0, 200),
+    });
+  }
+  const wsOf = (name?: string) => {
+    if (!name) return undefined;
+    const k = key(name);
+    return c.s.workshops.find(w => key(w.name) === k || (w.aliases ?? []).some(a => key(a) === k));
+  };
+  let n = 0;
+  for (const r of f.costings ?? []) {
+    const p = byId(c.s.products, r.product);
+    if (!p) return fail(`Không tìm thấy sản phẩm ${r.product}`);
+    if (r.color && !colorsOf(p).includes(r.color)) return fail(`${p.name} không có màu ${r.color}`);
+    const w = wsOf(r.costing.workshopName);
+    p.costing = { ...(p.costing ?? {}), [r.color ?? ""]: { ...r.costing, workshop: w?.id } };
+    if (!r.color || !p.laborCost) p.laborCost = r.costing.labor;
+    n++;
+  }
+  return ok(`Tính giá: ${created} xưởng mới, cập nhật ${f.workshops?.length ?? 0} xưởng, ${n} bảng giá sản phẩm`);
+}
+
+// ----- Đồng bộ file báo cáo nguyên vật liệu (danh mục, tồn đầu, nhập / xuất theo ngày, định mức) -----
+export interface NvlFile {
+  materials: { code: string; name: string; unit: string; category: MaterialCategory; price: number; opening: number; supplier?: string; supplierCode?: string; note?: string }[]
+  moves: { code: string; type: "in" | "out"; qty: number; date: string }[] // date yyyy-mm-dd
+  openingDate: string
+  boms: { product: string; color?: string; lines: { code: string; qty: number }[] }[]
+}
+const NVL_TAG = "Đồng bộ file NVL";
+
+export function importNvl(c: Ctx, f: NvlFile): Result {
+  if (c.s.materialTxns.some(t => t.reason?.startsWith(NVL_TAG))) return fail("File NVL đã được đồng bộ trước đó");
+  if (!f.materials?.length || f.materials.length > 2000 || (f.moves?.length ?? 0) > 50_000) return fail("Dữ liệu file không hợp lệ");
+  const at = (d: string) => new Date(`${d}T12:00:00+07:00`);
+  const byCode = new Map(c.s.materials.map(m => [m.code, m]));
+  let created = 0;
+  for (const x of f.materials) {
+    const code = String(x.code).trim().slice(0, 30), name = String(x.name).trim().slice(0, LIMITS.name);
+    if (!code || !name) return fail(`Mã / tên phụ liệu trống: ${code || name}`);
+    if (!MATERIAL_CATEGORIES[x.category]) return fail(`Loại phụ liệu không hợp lệ: ${code}`);
+    let m = byCode.get(code);
+    if (!m) {
+      m = { id: uid(c, "m"), code, category: x.category, name, unit: x.unit, stock: 0, avgPrice: 0, totalImportQty: 0, totalImportCost: 0, minStock: 0, status: "active" };
+      c.s.materials.push(m); byCode.set(code, m); created++;
+    }
+    Object.assign(m, { name, unit: x.unit, category: x.category, supplier: x.supplier || undefined, supplierCode: x.supplierCode || undefined, note: x.note || undefined });
+    // tồn đầu kỳ: tính như 1 lần nhập theo giá hiện tại để có giá bình quân
+    if (x.opening > 0) {
+      applyImport(m, x.opening, x.price);
+      c.s.materialTxns.push({ id: uid(c, "t"), material: m.id, type: "adjust", qty: x.opening, price: x.price, reason: `${NVL_TAG}: tồn đầu kỳ`, stockAfter: m.stock, avgAfter: m.avgPrice, by: c.me, at: at(f.openingDate) });
+    }
+  }
+  const price = new Map(f.materials.map(x => [String(x.code).trim(), x.price]));
+  const moves = [...f.moves].sort((a, b) => a.date.localeCompare(b.date));
+  for (const mv of moves) {
+    const m = byCode.get(mv.code);
+    if (!m) return fail(`Mã ${mv.code} không có trong danh mục`);
+    if (!(mv.qty > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(mv.date)) return fail(`Dòng ${mv.code} ngày ${mv.date} không hợp lệ`);
+    if (mv.type === "in") applyImport(m, mv.qty, price.get(mv.code) ?? 0); else applyIssue(m, mv.qty);
+    c.s.materialTxns.push({ id: uid(c, "t"), material: m.id, type: mv.type, qty: mv.qty, ...(mv.type === "in" ? { price: price.get(mv.code) ?? 0 } : {}), reason: NVL_TAG, stockAfter: m.stock, avgAfter: m.avgPrice, by: c.me, at: at(mv.date) });
+  }
+  // mã có giá trong file nhưng chưa từng nhập → lấy giá file làm giá bình quân ban đầu
+  for (const x of f.materials) { const m = byCode.get(String(x.code).trim()); if (m && !m.avgPrice && x.price > 0) m.avgPrice = x.price; }
+  // tồn âm (file ghi xuất nhiều hơn nhập) → đưa về 0, ghi lại để kiểm tra
+  const fixed: string[] = [];
+  for (const m of new Set(byCode.values())) if (m.stock < 0) {
+    fixed.push(`${m.code} ${nf(m.stock, 1)}`);
+    c.s.materialTxns.push({ id: uid(c, "t"), material: m.id, type: "adjust", qty: -m.stock, reason: `${NVL_TAG}: tồn âm ${nf(m.stock, 1)} đưa về 0`, stockAfter: 0, avgAfter: m.avgPrice, by: c.me, at: c.now });
+    m.stock = 0;
+  }
+  let boms = 0;
+  for (const b of f.boms ?? []) {
+    const p = byId(c.s.products, b.product);
+    if (!p) return fail(`Không tìm thấy sản phẩm ${b.product}`);
+    const lines = b.lines.map(l => ({ material: byCode.get(l.code)?.id ?? "", qtyPerUnit: l.qty })).filter(l => l.material && l.qtyPerUnit > 0);
+    if (!lines.length) continue;
+    if (b.color) {
+      if (!colorsOf(p).includes(b.color)) return fail(`${p.name} không có màu ${b.color}`);
+      p.bomByColor = { ...(p.bomByColor ?? {}), [b.color]: lines };
+    } else p.bom = lines;
+    boms++;
+  }
+  return ok(`NVL: ${created} phụ liệu mới, ${moves.length} lần nhập / xuất, ${boms} định mức${fixed.length ? `, ${fixed.length} mã tồn âm đưa về 0` : ""}`);
 }
 
 // Tìm phiên bản theo SKU / barcode (quét mã)
@@ -442,16 +549,18 @@ export function createOrder(c: Ctx, a: { productId: string; workshopId: string; 
   if (sizes.some(x => x.size.length > 10)) return fail("Tên size quá dài");
   const qty = sizes.reduce((t, x) => t + x.qty, 0);
   if (qty > LIMITS.orderQty) return fail(`Một lệnh tối đa ${nf(LIMITS.orderQty)} cái`);
-  const p = byId(c.s.products, a.productId);
-  if (!p) return fail("Chọn sản phẩm");
-  if (p.status !== "active") return fail(`${p.sku} đang ${PRODUCT_STATUS[p.status].toLowerCase()}, không tạo lệnh được`);
-  const bad = unusableMaterials(p, c.s.materials);
-  if (bad.length) return fail(`Phụ liệu ${bad.map(m => `${m.code} (${MATERIAL_STATUS[m.status].toLowerCase()})`).join(", ")} không dùng được cho lệnh mới`);
-  if (!p.bom.length) return fail(`${p.name} chưa có định mức phụ liệu, khai báo ở trang Sản phẩm trước`);
-  const colors = [...new Set((p.variants ?? []).map(v => v.color).filter(Boolean))] as string[];
-  const color = a.color?.trim() || undefined;
+  const p0 = byId(c.s.products, a.productId);
+  if (!p0) return fail("Chọn sản phẩm");
+  if (p0.status !== "active") return fail(`${p0.sku} đang ${PRODUCT_STATUS[p0.status].toLowerCase()}, không tạo lệnh được`);
+  const colors = colorsOf(p0);
+  const color = a.color?.trim() || (colors.length === 1 ? colors[0] : undefined);
   if (colors.length > 1 && !color) return fail("Sản phẩm có nhiều màu, chọn màu cho lệnh");
   if (color && colors.length && !colors.includes(color)) return fail(`Màu ${color} không có trong sản phẩm`);
+  // định mức đúng màu của lệnh
+  const p = forColor(p0, color);
+  const bad = unusableMaterials(p, c.s.materials);
+  if (bad.length) return fail(`Phụ liệu ${bad.map(m => `${m.code} (${MATERIAL_STATUS[m.status].toLowerCase()})`).join(", ")} không dùng được cho lệnh mới`);
+  if (!p.bom.length) return fail(`${p.name}${color ? ` (${color})` : ""} chưa có định mức phụ liệu, khai báo ở trang Sản phẩm trước`);
   const ws = byId(c.s.workshops, a.workshopId);
   if (!ws) return fail("Chọn xưởng");
   if (!ws.active) return fail(`${ws.name} đã ngừng hợp tác`);
@@ -464,8 +573,8 @@ export function createOrder(c: Ctx, a: { productId: string; workshopId: string; 
   if (shortages(p, qty, c.s.materials).length) return fail("Không đủ phụ liệu, cần nhập thêm trước khi tạo lệnh");
   const code = `LSX-${String(c.s.seq.order++).padStart(4, "0")}`;
   const o: ProductionOrder = {
-    id: code, code, product: p.id, workshop: a.workshopId, qty, sizes, color: color ?? (colors.length === 1 ? colors[0] : undefined), step: "cut",
-    unitCost: unitCost(p, c.s.materials), loss: 0, lossApproved: false, batches: [],
+    id: code, code, product: p.id, workshop: a.workshopId, qty, sizes, color, step: "cut",
+    unitCost: unitCost(p0, c.s.materials, color), loss: 0, lossApproved: false, batches: [],
     createdBy: c.me, createdAt: c.now, dueAt,
   };
   c.s.orders.push(o);
@@ -684,7 +793,7 @@ export function editOrder(c: Ctx, id: string, a: { workshopId?: string; dueDate?
       const qty = sizes.reduce((t, x) => t + x.qty, 0);
       if (qty > LIMITS.orderQty) return fail(`Một lệnh tối đa ${nf(LIMITS.orderQty)} cái`);
       // xuất thêm / hoàn lại phần chênh lệch phụ liệu theo định mức
-      const p = prodOf(c.s, o);
+      const p = forColor(prodOf(c.s, o), o.color);
       const deltas = p.bom.map(b => ({ m: byId(c.s.materials, b.material)!, d: Math.round(b.qtyPerUnit * (qty - o.qty) * 100) / 100 }));
       const short = deltas.filter(x => x.d > 0 && x.d > x.m.stock);
       if (short.length) return fail(`Không đủ phụ liệu để tăng số lượng: ${short.map(x => `${x.m.code} cần thêm ${nf(x.d, 1)}, còn ${nf(x.m.stock, 1)}`).join("; ")}`);
@@ -836,6 +945,8 @@ export const ACTIONS: Record<string, [Action | null, (c: Ctx, ...args: any[]) =>
   setProductStatus: ["product.manage", setProductStatus, "Đổi tình trạng sản phẩm"],
   setProductVariants: ["product.manage", setProductVariants, "Sửa size + SKU sản phẩm"],
   importSapo: ["product.manage", importSapo, "Nhập sản phẩm từ Sapo"],
+  importCosting: ["user.manage", importCosting, "Đồng bộ file tính giá"],
+  importNvl: ["user.manage", importNvl, "Đồng bộ file nguyên vật liệu"],
   setProductBom: ["product.manage", setProductBom, "Sửa định mức sản phẩm"],
   createOrder: ["order.create", createOrder, "Tạo lệnh sản xuất"],
   confirmCut: ["order.cut", confirmCut, "Xác nhận đã cắt"],

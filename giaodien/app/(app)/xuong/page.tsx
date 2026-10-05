@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { CircleCheck, Factory, Pencil, Phone, Plus } from "lucide-react";
+import { CircleCheck, Factory, MapPin, Pencil, Phone, Plus } from "lucide-react";
 import { byId, DAY, isRepairLate, sum, type RepairTicket, type Workshop } from "@core";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,7 +13,7 @@ import { useAction, useConfirmAction } from "@/lib/use-action";
 import { useDraft } from "@/lib/use-draft";
 import { Summary } from "@/components/xf/confirm-provider";
 import { Collapsible } from "@/components/xf/collapsible";
-import { daysLate, fmtD } from "@/lib/format";
+import { daysLate, fmtD, vnd } from "@/lib/format";
 import { EmptyState, Field, PageHeader, Panel, StatCard, StatusPill, TableWrap } from "@/components/xf/basics";
 import { PhotoStrip } from "@/components/xf/photos";
 
@@ -154,9 +154,11 @@ export default function WorkshopsPage() {
           actions={
             <div className="flex flex-wrap items-center gap-2 text-[13px]">
               {w.contactName && <span className="text-muted-foreground">{w.contactName}</span>}
-              <a href={`tel:${w.phone.replace(/\s/g, "")}`} className="num inline-flex items-center gap-1 rounded-md bg-surface px-2 py-1 text-brand hover:bg-surface-2">
-                <Phone className="size-3.5" /> {w.phone}
-              </a>
+              {w.phone && (
+                <a href={`tel:${w.phone.replace(/\s/g, "")}`} className="num inline-flex items-center gap-1 rounded-md bg-surface px-2 py-1 text-brand hover:bg-surface-2">
+                  <Phone className="size-3.5" /> {w.phone}
+                </a>
+              )}
               {manage && (
                 <>
                   <Button size="sm" variant="secondary" onClick={() => setEditing(w)}><Pencil /> Sửa</Button>
@@ -172,6 +174,29 @@ export default function WorkshopsPage() {
           }
           flush
         >
+          {(w.address || w.note || !!w.rates?.length) && (
+            <div className="flex flex-col gap-1.5 border-b border-line px-4 py-2.5 text-[12.5px] md:px-5">
+              {(w.address || w.note) && (
+                <p className="text-muted-foreground">
+                  {w.address && <span className="inline-flex items-start gap-1"><MapPin className="mt-0.5 size-3.5 shrink-0" />{w.address}</span>}
+                  {w.address && w.note && " · "}{w.note}
+                </p>
+              )}
+              {!!w.rates?.length && (
+                <details className="group">
+                  <summary className="cursor-pointer font-semibold text-brand select-none">Bảng giá gia công ({w.rates.length})</summary>
+                  <div className="mt-1.5 grid grid-cols-1 gap-x-6 gap-y-0.5 sm:grid-cols-2 xl:grid-cols-3">
+                    {w.rates.map(r => (
+                      <div key={r.item} className="flex items-baseline justify-between gap-2 border-b border-dashed border-line py-0.5">
+                        <span>{r.item}{r.minQty && r.minQty > 1 ? <span className="text-subtle"> · từ {r.minQty} cái</span> : null}{r.invoice ? <span className="text-ok"> · có HĐ</span> : null}</span>
+                        <span className="num shrink-0 text-right font-semibold">{r.price != null ? vnd(r.price) : <span className="font-normal text-muted-foreground">{r.note ?? "—"}</span>}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
           {list.length ? (
             <>
               <div className="flex flex-wrap items-center gap-2 px-4 pt-3 pb-2 md:px-5">

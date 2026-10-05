@@ -1,4 +1,4 @@
-import type { ItemStatus, Material, MaterialCategory, Product } from './types'
+import type { Costing, ItemStatus, Material, MaterialCategory, Product } from './types'
 import { byId, round2, sum } from './util'
 
 export const MATERIAL_CATEGORIES: Record<MaterialCategory, string> = {
@@ -27,6 +27,17 @@ export const MATERIAL_STATUS: Record<ItemStatus, string> = {
 export const PRODUCT_STATUS: Record<ItemStatus, string> = {
   active: "Đang sản xuất", paused: "Tạm ngưng", discontinued: "Ngừng sản xuất",
 }
+
+// Định mức theo màu: có định mức riêng của màu đó thì dùng, không thì dùng định mức chung
+export function bomOf(p: Product, color?: string) {
+  const own = color ? p.bomByColor?.[color] : undefined
+  return own?.length ? own : p.bom
+}
+// Sản phẩm "nhìn theo 1 màu": các hàm tính định mức / giá vốn dùng đúng vải của màu đó
+export const forColor = (p: Product, color?: string): Product => ({ ...p, bom: bomOf(p, color) })
+export const hasBom = (p: Product) => p.bom.length > 0 || Object.values(p.bomByColor ?? {}).some(l => l.length > 0)
+// Màu của mẫu (theo phiên bản Sapo)
+export const colorsOf = (p: Product) => [...new Set((p.variants ?? []).map(v => v.color).filter((x): x is string => !!x))]
 
 // Phụ liệu không ở trạng thái "đang dùng" thì không dùng cho lệnh mới
 export function unusableMaterials(product: Product, materials: Material[]) {
@@ -63,12 +74,46 @@ export function shortages(product: Product, qty: number, materials: Material[]) 
 }
 
 export function materialCost(product: Product, materials: Material[]) {
-  return sum(product.bom, b => b.qtyPerUnit * byId(materials, b.material)!.avgPrice)
+  return sum(product.bom, b => b.qtyPerUnit * (byId(materials, b.material)?.avgPrice ?? 0))
 }
 
+// ----- Tính giá (công thức giống file TÍNH GIÁ SP) -----
+export function costingOf(p: Product, color?: string): Costing | undefined {
+  const c = p.costing
+  if (!c) return undefined
+  return (color ? c[color] : undefined) ?? c[""] ?? (color ? undefined : Object.values(c)[0])
+}
+export const accTotal = (c?: Costing) => (c ? (c.acc?.tag ?? 0) + (c.acc?.logo ?? 0) + (c.acc?.extra ?? 0) + (c.acc?.buttons ?? 0) + (c.acc?.fusing ?? 0) + (c.other ?? 0) : 0)
+export const fileFabric = (c?: Costing) => (c ? (c.fabric ? c.fabric.qty * c.fabric.price : 0) + (c.lining ? c.lining.qty * c.lining.price : 0) : 0)
+
+export interface CostBreakdown {
+  fabric: number // vải chính + lót (+ phụ liệu kho nếu định mức có)
+  fabricFrom: "bom" | "file" | "none" // định mức kho × giá BQ, hoặc định lượng × giá trong file tính giá
+  labor: number
+  acc: number // phụ liệu theo file tính giá (tag, logo, cúc, ép keo, khác)
+  total: number
+  costing?: Costing
+}
+// Giá vốn 1 cái = vải (định mức kho, chưa có thì theo file) + công may + phụ liệu
+export function costBreakdown(p: Product, materials: Material[], color?: string): CostBreakdown {
+  const bom = bomOf(p, color)
+  const c = costingOf(p, color)
+  const fromBom = bom.length > 0
+  const fabric = fromBom ? sum(bom, b => b.qtyPerUnit * (byId(materials, b.material)?.avgPrice ?? 0)) : fileFabric(c)
+  // định mức kho đã có cúc (có giá) thì không cộng tiền cúc của file nữa
+  const bomHasButtons = fromBom && bom.some(b => { const m = byId(materials, b.material); return m?.category === 'nut' && m.avgPrice > 0 })
+  const acc = Math.max(0, accTotal(c) - (bomHasButtons ? c?.acc?.buttons ?? 0 : 0))
+  const labor = c?.labor ?? p.laborCost
+  return { fabric, fabricFrom: fromBom ? "bom" : c ? "file" : "none", labor, acc, total: fabric + labor + acc, costing: c }
+}
+// Giá bán theo công thức file: giá vốn ÷ tỉ lệ cost mong muốn × 1,08 (VAT)
+export const formulaPrice = (cost: number, ratio?: number) => (ratio ? (cost / ratio) * 1.08 : 0)
+// Tỉ lệ cost thực tế = giá vốn ÷ (giá bán ÷ 1,08)
+export const costRatio = (cost: number, price?: number) => (price ? cost / (price / 1.08) : 0)
+
 // giáVốn = Σ(định mức × giá BQ) + tiền công may
-export function unitCost(product: Product, materials: Material[]) {
-  return materialCost(product, materials) + product.laborCost
+export function unitCost(product: Product, materials: Material[], color?: string) {
+  return costBreakdown(product, materials, color).total
 }
 
 // Ngưỡng báo đủ (nếu chưa đặt thì lấy 130% ngưỡng báo hết)
@@ -93,7 +138,15 @@ export function sapoCost(p: Product) {
   return cs.length ? cs.reduce((a, b) => a + b, 0) / cs.length : 0
 }
 // Giá vốn dùng hiển thị: có định mức thì tính theo định mức, chưa có thì lấy giá nhập Sapo
-export const costOf = (p: Product, materials: Material[]) => (p.bom.length ? unitCost(p, materials) : sapoCost(p))
+// Giá vốn hiển thị: theo định mức / file tính giá; mẫu nhiều màu lấy màu đầu tiên có số liệu; chưa có gì thì giá nhập Sapo
+export function displayColor(p: Product) {
+  if (p.bom.length || p.costing?.[""]) return undefined
+  return Object.keys(p.bomByColor ?? {}).find(k => p.bomByColor![k].length) ?? Object.keys(p.costing ?? {})[0]
+}
+export function costOf(p: Product, materials: Material[]) {
+  const b = costBreakdown(p, materials, displayColor(p))
+  return b.fabricFrom === "none" && !b.labor ? sapoCost(p) : b.total
+}
 // Khoảng giá (vd giá bán lẻ khác nhau giữa các size)
 export function priceRange(vals: (number | undefined)[]): [number, number] | null {
   const xs = vals.filter((x): x is number => typeof x === 'number' && x > 0)

@@ -25,6 +25,35 @@ export interface Workshop {
   contactName: string
   phone: string
   active: boolean
+  address?: string
+  note?: string
+  aliases?: string[] // tên gọi khác (trong file tính giá, Sapo…) để khớp tự động
+  rates?: WorkshopRate[] // bảng giá gia công
+}
+
+export interface WorkshopRate {
+  item: string // loại sản phẩm / công đoạn
+  price?: number
+  minQty?: number
+  invoice?: boolean // xuất được hóa đơn
+  note?: string
+}
+
+// Bảng tính giá 1 sản phẩm (theo file TÍNH GIÁ SP): giá vốn = công may + vải chính + vải lót + phụ liệu + khác
+export interface Costing {
+  labor: number // công may
+  workshop?: string // id xưởng may
+  workshopName?: string
+  sewType?: string // loại may
+  fabric?: { name?: string; qty: number; price: number } // vải chính: định lượng (m) × giá/m
+  lining?: { name?: string; qty: number; price: number } // vải lót
+  acc?: { tag?: number; logo?: number; extra?: number; buttons?: number; fusing?: number } // tag, thêu logo, phụ kiện kèm, cúc, ép keo
+  zipper?: number // dây kéo (ghi chú, file không cộng vào phụ liệu)
+  other?: number // chi phí khác (vd khăn tặng kèm)
+  ratio?: number // tỉ lệ cost mong muốn (vd 0.32)
+  listPrice?: number // giá áp dụng (đã gồm VAT)
+  rating?: string // đánh giá
+  updated?: string // ngày cập nhật giá (yyyy-mm-dd)
 }
 
 // Tình trạng mã hàng: đang dùng / tạm ngưng (không dùng cho lệnh mới) / ngừng hẳn (không nhập, không dùng)
@@ -46,6 +75,9 @@ export interface Material {
   okStock?: number // ngưỡng báo đủ: nhập lên tới mức này → báo đã đủ (mặc định 130% ngưỡng hết)
   lowAlertedAt?: Date | null
   status: ItemStatus
+  supplier?: string // nhà cung cấp
+  supplierCode?: string // mã của nhà cung cấp (vd FP07997_40#)
+  note?: string // đặc tính, dùng may sản phẩm nào
 }
 
 export interface MaterialTxn {
@@ -88,7 +120,9 @@ export interface Product {
   sku: string // mã chung của mẫu
   name: string
   laborCost: number
-  bom: BomLine[]
+  bom: BomLine[] // định mức chung (mọi màu)
+  bomByColor?: Record<string, BomLine[]> // định mức riêng theo màu (vải khác màu); không có thì dùng định mức chung
+  costing?: Record<string, Costing> // bảng tính giá: "" = chung, hoặc theo màu
   variants?: ProductVariant[]
   category?: string // loại sản phẩm (BLAZER, QUẦN…)
   tags?: string[] // vd "Không nhận sửa - custom"

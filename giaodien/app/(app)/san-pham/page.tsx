@@ -3,12 +3,13 @@
 import { Fragment, useState } from "react";
 import { ChevronRight, Info, Pencil, Plus, Shirt, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { byId, costOf, isLive, materialCost, priceRange, PRODUCT_STATUS, sapoStock, sum, type BomLine, type ItemStatus, type Product, type ProductVariant } from "@core";
+import { byId, costBreakdown, costOf, displayColor, hasBom, isLive, materialCost, priceRange, PRODUCT_STATUS, sapoStock, sum, type BomLine, type ItemStatus, type Product, type ProductVariant } from "@core";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { VariantsEditor } from "@/components/xf/variants-editor";
 import { SapoSheetPanel } from "@/components/xf/sapo-sheet";
 import { BomDialog } from "@/components/xf/bom-dialog";
 import { fmtRange, ProductThumb, SapoVariants } from "@/components/xf/sapo-product";
+import { CostingCard } from "@/components/xf/costing-card";
 import { Button } from "@/components/ui/button";
 import { matches } from "@/lib/search";
 import { SearchBox } from "@/components/xf/search-box";
@@ -153,7 +154,7 @@ function ProductDetail({ p, mat, stock }: { p: Product; mat: number; stock: numb
         <div className="mb-2 flex items-baseline justify-between gap-2">
           <h3 className="font-serif text-[15px] font-semibold text-brand">Định mức cho 1 sản phẩm</h3>
           <span className="flex items-center gap-2 text-xs text-muted-foreground">
-            {p.bom.length ? `${p.bom.length} phụ liệu` : <span className="text-warn">Chưa có định mức, chưa tạo lệnh được</span>}
+            {p.bom.length ? `${p.bom.length} phụ liệu` : hasBom(p) ? <span>Định mức riêng theo màu: {Object.keys(p.bomByColor ?? {}).join(", ")} (xem Tính giá)</span> : <span className="text-warn">Chưa có định mức, chưa tạo lệnh được</span>}
             {can("product.manage") && (
               <button type="button" onClick={() => setEditBom(true)} className="inline-flex items-center gap-1 font-semibold text-brand hover:underline">
                 <Pencil className="size-3.5" /> {p.bom.length ? "Sửa" : "Khai báo"}
@@ -410,7 +411,12 @@ export default function ProductsPage() {
                       <td className="r num whitespace-nowrap">{fmtRange(priceRange(p.variants?.map(v => v.price) ?? []))}</td>
                       <td className="r num whitespace-nowrap">
                         <b className="text-brand">{vnd(cost)}</b>
-                        <div className={cn("text-[11px] font-normal", p.bom.length ? "text-subtle" : "text-warn")}>{p.bom.length ? `định mức ${vnd(mat)} + công` : "giá nhập Sapo · chưa định mức"}</div>
+                        {(() => {
+                          const src = costBreakdown(p, s.materials, displayColor(p)).fabricFrom;
+                          return <div className={cn("text-[11px] font-normal", src === "bom" ? "text-subtle" : "text-warn")}>
+                            {src === "bom" ? "định mức + công + phụ liệu" : src === "file" ? "theo file tính giá · chưa định mức" : "giá nhập Sapo · chưa định mức"}
+                          </div>;
+                        })()}
                       </td>
                       <td onClick={e => e.stopPropagation()}>
                         <StatusSelect id={`ps-${p.id}`} value={p.status} labels={PRODUCT_STATUS} editable={manage} onChange={v => changeStatus(p.id, v)} />
@@ -422,6 +428,7 @@ export default function ProductsPage() {
                         <td colSpan={8} className="!pt-0">
                           <div className="flex flex-col gap-3">
                             <SapoVariants p={p} />
+                            <CostingCard p={p} />
                             <ProductDetail p={p} mat={mat} stock={st} />
                           </div>
                         </td>

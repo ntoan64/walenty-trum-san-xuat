@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { byId, type Product } from "@core";
+import { bomOf, byId, type Product } from "@core";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useStore, A } from "@/lib/store";
@@ -10,18 +10,20 @@ import { useAction } from "@/lib/use-action";
 import { NumberField } from "./basics";
 
 // Khai báo / sửa định mức phụ liệu + tiền công cho sản phẩm (vd mẫu nhập từ Sapo chưa có)
-export function BomDialog({ p, onClose }: { p: Product; onClose: () => void }) {
+// color: định mức riêng cho màu đó (vải khác màu); không truyền = định mức chung
+export function BomDialog({ p, color, onClose }: { p: Product; color?: string; onClose: () => void }) {
   const { data: s } = useStore();
   const act = useAction();
   const usable = s.materials.filter(m => m.status !== "discontinued");
   const [labor, setLabor] = useState(String(p.laborCost || ""));
-  const [bom, setBom] = useState(p.bom.length
-    ? p.bom.map(l => ({ material: l.material, qty: String(l.qtyPerUnit) }))
+  const cur = color ? bomOf(p, color) : p.bom;
+  const [bom, setBom] = useState(cur.length
+    ? cur.map(l => ({ material: l.material, qty: String(l.qtyPerUnit) }))
     : [{ material: usable[0]?.id ?? "", qty: "1" }]);
   const [busy, setBusy] = useState(false);
   const save = async () => {
     setBusy(true);
-    const r = await act("product.manage", A.setProductBom, p.id, { laborCost: +labor || 0, bom: bom.map(b => ({ material: b.material, qtyPerUnit: +b.qty || 0 })) });
+    const r = await act("product.manage", A.setProductBom, p.id, { laborCost: +labor || 0, bom: bom.map(b => ({ material: b.material, qtyPerUnit: +b.qty || 0 })), color });
     setBusy(false);
     if (r.ok) onClose();
   };
@@ -29,8 +31,8 @@ export function BomDialog({ p, onClose }: { p: Product; onClose: () => void }) {
     <Dialog open onOpenChange={x => { if (!x) onClose(); }}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="font-serif text-lg text-brand">Định mức · {p.name}</DialogTitle>
-          <DialogDescription>Phụ liệu cho 1 sản phẩm và tiền công may. Có định mức mới tạo lệnh sản xuất được.</DialogDescription>
+          <DialogTitle className="font-serif text-lg text-brand">Định mức · {p.name}{color ? ` · ${color}` : ""}</DialogTitle>
+          <DialogDescription>Phụ liệu cho 1 sản phẩm{color ? ` màu ${color}` : ""} và tiền công may. Có định mức mới tạo lệnh sản xuất được.</DialogDescription>
         </DialogHeader>
         {usable.length ? (
           <div className="flex flex-col gap-1.5">
