@@ -1,0 +1,16 @@
+{
+  "name": "walenty-trum-san-xuat",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "giaodien",
+    "chucnang"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w giaodien",
+    "build": "npm run build -w giaodien",
+    "start": "npm run start -w giaodien",
+    "lint": "npm run lint -w giaodien",
+    "test": "npm test -w chucnang"
+  }
+}

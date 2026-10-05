@@ -1,0 +1,20 @@
+# thư viện
+node_modules/
+
+# bí mật: KHÔNG commit (MONGODB_URI, mật khẩu…)
+.env
+.env.*
+!.env.example
+
+# build / công cụ
+.next/
+out/
+.vercel/
+*.tsbuildinfo
+coverage/
+
+# file tạm
+*.tmp.mjs
+*.log
+.DS_Store
+~$*.docx

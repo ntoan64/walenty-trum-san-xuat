@@ -1,0 +1,307 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Bảng màu Walenty: burgundy · nâu · xám than · nền kem ấm */
+:root {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-low: #fbf8f7;
+  --surface-2: #f6f1f0;
+  --surface-3: #f0e9e8;
+  --surface-4: #e8dfde;
+  --line: #ece4e3;
+  --line-strong: #dbc0bf;
+  --fg: #1f1b1a;
+  --muted: #554241;
+  --subtle: #887271;
+
+  --brand: #5e1117;
+  --brand-strong: #3e0007;
+  --brand-fg: #ffffff;
+  --brand-soft: #f7e3e1;
+  --brown: #785837;
+  --brown-soft: #f7e8d8;
+  --slate: #3e4347;
+
+  --ok: #2c6b45;
+  --ok-soft: #e0efe5;
+  --warn: #965a0b;
+  --warn-soft: #fbecd5;
+  --bad: #ba1a1a;
+  --bad-soft: #ffdad6;
+  --info: #3e4347;
+  --info-soft: #e5e7e9;
+  --scrap: #8e8280;
+  --wait: #e3d3d0;
+  --qcbar: #4e5459;
+
+  /* shadcn */
+  --background: var(--bg);
+  --foreground: var(--fg);
+  --card: var(--surface);
+  --card-foreground: var(--fg);
+  --popover: var(--surface);
+  --popover-foreground: var(--fg);
+  --primary: var(--brand);
+  --primary-foreground: var(--brand-fg);
+  --secondary: var(--surface-3);
+  --secondary-foreground: var(--fg);
+  --muted-foreground: var(--muted);
+  --accent: var(--surface-3);
+  --accent-foreground: var(--fg);
+  --destructive: var(--bad);
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: var(--brand);
+  --radius: 0.5rem;
+}
+
+.dark {
+  --bg: #161211;
+  --surface: #211b1a;
+  --surface-low: #1b1615;
+  --surface-2: #2a2322;
+  --surface-3: #332b2a;
+  --surface-4: #3d3433;
+  --line: #3a302f;
+  --line-strong: #554241;
+  --fg: #efe4e2;
+  --muted: #d3bfbd;
+  --subtle: #a08c8a;
+
+  --brand: #ffb3b1;
+  --brand-strong: #ffdad8;
+  --brand-fg: #4d0d12;
+  --brand-soft: #45191c;
+  --brown: #e9bf97;
+  --brown-soft: #3b2b1c;
+  --slate: #c2c7cc;
+
+  --ok: #7fcf9b;
+  --ok-soft: #1b3324;
+  --warn: #f0b45a;
+  --warn-soft: #3a2a10;
+  --bad: #ff8a7e;
+  --bad-soft: #4b1714;
+  --info: #c9ced3;
+  --info-soft: #2c3134;
+  --scrap: #9b8f8d;
+  --wait: #4a3f3e;
+  --qcbar: #9aa1a8;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--surface-2);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-surface: var(--surface);
+  --color-surface-low: var(--surface-low);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-surface-4: var(--surface-4);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-subtle: var(--subtle);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-fg: var(--brand-fg);
+  --color-brand-soft: var(--brand-soft);
+  --color-brown: var(--brown);
+  --color-brown-soft: var(--brown-soft);
+  --color-slate: var(--slate);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-scrap: var(--scrap);
+  --color-wait: var(--wait);
+  --color-qcbar: var(--qcbar);
+
+  --font-sans: var(--font-jakarta), system-ui, sans-serif;
+  --font-heading: var(--font-noto-serif), Georgia, serif;
+  --font-serif: var(--font-noto-serif), Georgia, serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, Consolas, monospace;
+
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 0.75);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.25);
+  --radius-2xl: calc(var(--radius) * 1.5);
+  --radius-3xl: calc(var(--radius) * 2);
+  --radius-4xl: calc(var(--radius) * 2.5);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+  h1, h2, h3 {
+    text-wrap: balance;
+  }
+}
+
+@layer components {
+  /* Thẻ nền trắng: viền mảnh + bóng rất nhẹ, giống walenty.vn */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    box-shadow: 0 1px 4px rgba(31, 27, 26, 0.03);
+  }
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  .eyebrow {
+    font-size: 11px;
+    line-height: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--subtle);
+  }
+  .field-input {
+    width: 100%;
+    min-height: 40px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: var(--surface-2);
+    color: var(--fg);
+    border: 1px solid transparent;
+    font: inherit;
+  }
+  .field-input:focus {
+    outline: none;
+    background: var(--surface);
+    border-color: var(--line-strong);
+  }
+  .field-input[aria-invalid="true"] {
+    border-color: var(--bad);
+  }
+  /* Bảng kiểu Walenty: đầu bảng nền ấm, chữ nhỏ in hoa */
+  .wl-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 560px;
+  }
+  .wl-table th {
+    background: var(--surface-3);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-align: left;
+    padding: 10px 12px;
+    white-space: nowrap;
+  }
+  .wl-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: middle;
+  }
+  .wl-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  .wl-table tbody tr:hover td {
+    background: color-mix(in srgb, var(--surface-2) 60%, transparent);
+  }
+  .wl-table tfoot td {
+    font-weight: 600;
+    background: var(--surface-low);
+    padding: 10px 12px;
+  }
+  .wl-table .r {
+    text-align: right;
+  }
+}
+
+/* ---------- Chuyển động: nhẹ, nhanh, không cản thao tác ---------- */
+@layer base {
+  a, button, select, input, textarea, summary, [role="button"] {
+    transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+    transition-duration: 160ms;
+    transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  /* Nút lún nhẹ khi nhấn */
+  button:not(:disabled):active, a[role="button"]:active {
+    transform: scale(0.97);
+  }
+}
+
+@layer components {
+  .card {
+    transition: box-shadow 200ms ease, transform 200ms ease, border-color 200ms ease;
+  }
+  /* Nội dung trang: trượt lên + hiện dần, các khối lần lượt */
+  .page-enter > * {
+    animation: page-in 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .page-enter > *:nth-child(2) { animation-delay: 40ms; }
+  .page-enter > *:nth-child(3) { animation-delay: 80ms; }
+  .page-enter > *:nth-child(4) { animation-delay: 120ms; }
+  .page-enter > *:nth-child(n + 5) { animation-delay: 160ms; }
+  /* Khối gập mở ra */
+  .reveal {
+    animation: reveal-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  /* Dòng mới thêm (dòng phiếu nhập, dòng lỗi QC…) */
+  .row-in {
+    animation: row-in 200ms ease-out both;
+  }
+}
+
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes reveal-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes row-in {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
