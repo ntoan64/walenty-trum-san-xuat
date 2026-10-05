@@ -28,7 +28,10 @@ function CreateOrder() {
   const today = isoDateVN(new Date());
   const [f, setF] = useDraft("order:f", () => ({ product: products[0]?.id ?? "", ws: "", due: isoDateVN(new Date(Date.now() + 5 * DAY)) }));
   // Số lượng theo size; thêm size khác (XS, XXL, free size…) bằng ô bên dưới
-  const [sizes, setSizes] = useDraft<{ size: string; qty: string }[]>("order:sizes", () => DEFAULT_SIZES.map(z => ({ size: z, qty: "" })));
+  const [sizes, setSizes] = useDraft<{ size: string; qty: string }[]>("order:sizes", () => {
+    const first = products.find(x => x.id === f.product) ?? products[0];
+    return (first?.variants?.length ? first.variants.map(v => v.size) : DEFAULT_SIZES).map(z => ({ size: z, qty: "" }));
+  });
   const [extra, setExtra] = useDraft("order:extra", "");
   const p = byId(products, f.product) ?? products[0];
   const sizeList = sizes.map(x => ({ size: x.size, qty: Math.floor(+x.qty || 0) })).filter(x => x.qty > 0);
@@ -59,7 +62,7 @@ function CreateOrder() {
           <Summary rows={[
             ["Sản phẩm", `${p.sku} · ${p.name}`],
             ["Xưởng", ws.name],
-            ["Theo size", sizeList.map(x => `${x.size}: ${x.qty}`).join(" · ")],
+            ["Theo size", sizeList.map(x => { const v = p.variants?.find(y => y.size === x.size); return `${x.size}${v ? ` (${v.sku})` : ""}: ${x.qty}`; }).join(" · ")],
             ["Tổng", `${qty} cái`],
             ["Dự kiến xong", f.due.split("-").reverse().join("/")],
             ["Xuất kho", need.map(n => `${n.material.code} ${nf(n.qty, 1)} ${n.material.unit}`).join(" · ")],
@@ -89,7 +92,12 @@ function CreateOrder() {
         <form onSubmit={submit} className="flex flex-col gap-4 p-4 md:p-5">
           <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] items-end gap-3">
             <Field label="Sản phẩm" htmlFor="o-prod">
-              <select id="o-prod" className="field-input" value={p.id} onChange={e => setF({ ...f, product: e.target.value })}>
+              <select id="o-prod" className="field-input" value={p.id} onChange={e => {
+                const np = products.find(x => x.id === e.target.value);
+                setF({ ...f, product: e.target.value });
+                // sản phẩm có khai báo size + SKU → lưới số lượng lấy đúng các size đó
+                setSizes((np?.variants?.length ? np.variants.map(v => v.size) : DEFAULT_SIZES).map(z => ({ size: z, qty: "" })));
+              }}>
                 {products.map(x => <option key={x.id} value={x.id}>{x.sku} · {x.name}</option>)}
               </select>
             </Field>
@@ -109,8 +117,8 @@ function CreateOrder() {
               {sizes.map((x, i) => (
                 <label key={x.size} className="flex flex-col gap-1 rounded-lg bg-surface-2 p-2">
                   <span className="flex items-center justify-between text-xs font-bold text-brand">
-                    {x.size}
-                    {!DEFAULT_SIZES.includes(x.size) && (
+                    <span>{x.size}{p.variants?.find(v => v.size === x.size) && <span className="num ml-1 font-normal text-subtle">{p.variants.find(v => v.size === x.size)!.sku}</span>}</span>
+                    {!DEFAULT_SIZES.includes(x.size) && !p.variants?.some(v => v.size === x.size) && (
                       <button type="button" aria-label={`Bỏ size ${x.size}`} className="text-subtle hover:text-bad" onClick={() => setSizes(sizes.filter((_, j) => j !== i))}>×</button>
                     )}
                   </span>

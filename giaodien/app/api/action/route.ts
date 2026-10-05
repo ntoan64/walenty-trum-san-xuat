@@ -1,5 +1,7 @@
 import { bodyTooLarge, isDuplicate, LIMIT, rateLimit, retryAfter } from "@server/guard";
+import { after } from "next/server";
 import { loadState, runAction, toClient } from "@server/store";
+import { deliver } from "@server/telegram";
 import { bad, currentUser, unauthorized, serverError } from "@/lib/session";
 
 // Chạy 1 thao tác nghiệp vụ. Quyền kiểm tra ở server theo người đang đăng nhập.
@@ -19,7 +21,8 @@ async function handle(req: Request) {
   if (isDuplicate(`${me.id}:${name}:${JSON.stringify(args)}`)) {
     return Response.json({ result: { ok: false, error: "Thao tác này vừa được gửi, đợi vài giây" } });
   }
-  const result = await runAction(me, name, args);
+  // thông báo mới → gửi Telegram sau khi đã trả lời người dùng (không làm chậm thao tác)
+  const result = await runAction(me, name, args, (ns, users) => after(() => deliver(ns, users)));
   const { state, version } = await loadState(); // vừa ghi xong nên lấy từ bộ nhớ đệm, không đọc lại database
   return Response.json({ result, version, state: toClient(state) });
 }

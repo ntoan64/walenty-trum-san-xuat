@@ -1,14 +1,16 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { ChevronRight, Info, Plus, Shirt, Trash2 } from "lucide-react";
+import { ChevronRight, Info, Pencil, Plus, Shirt, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { byId, isLive, materialCost, PRODUCT_STATUS, sum, type BomLine, type ItemStatus, type Product } from "@core";
+import { byId, isLive, materialCost, PRODUCT_STATUS, sum, type BomLine, type ItemStatus, type Product, type ProductVariant } from "@core";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { VariantsEditor } from "@/components/xf/variants-editor";
 import { Button } from "@/components/ui/button";
 import { matches } from "@/lib/search";
 import { SearchBox } from "@/components/xf/search-box";
 import { useStore, A } from "@/lib/store";
-import { useConfirmAction } from "@/lib/use-action";
+import { useAction, useConfirmAction } from "@/lib/use-action";
 import { fmtD, nf, vnd } from "@/lib/format";
 import { Summary } from "@/components/xf/confirm-provider";
 import { Collapsible } from "@/components/xf/collapsible";
@@ -25,6 +27,7 @@ function CreateProduct() {
   const usable = s.materials.filter(m => m.status === "active");
   const [f, setF] = useDraft("product:f", { sku: "", name: "", labor: "50000" });
   const [bom, setBom] = useDraft<{ key: number; material: string; qty: string }[]>("product:bom", () => [{ key: 1, material: usable[0]?.id ?? "", qty: "1" }]);
+  const [variants, setVariants] = useDraft<ProductVariant[]>("product:variants", []);
   const [seq, setSeq] = useDraft("product:seq", 2);
 
   const lines: BomLine[] = bom.filter(b => b.material).map(b => ({ material: b.material, qtyPerUnit: +b.qty || 0 }));
@@ -39,12 +42,14 @@ function CreateProduct() {
         description: <Summary rows={[
           ["SKU", f.sku.trim().toUpperCase()], ["Tên", f.name],
           ...lines.map(l => { const m = byId(s.materials, l.material)!; return [m.name, `${nf(l.qtyPerUnit, 2)} ${m.unit}`] as [string, string]; }),
-          ["Tiền công may", vnd(+f.labor || 0)], ["Giá vốn hiện tại", `${vnd(cost)}/cái`], ["Tình trạng", "Đang sản xuất"],
+          ["Tiền công may", vnd(+f.labor || 0)], ["Giá vốn hiện tại", `${vnd(cost)}/cái`],
+          ...(variants.length ? [["Size & SKU", variants.map(v => `${v.size.toUpperCase()}: ${v.sku.toUpperCase()}`).join(" · ")] as [string, string]] : []),
+          ["Tình trạng", "Đang sản xuất"],
         ]} />,
       },
-      "product.manage", A.createProduct, { sku: f.sku, name: f.name, laborCost: +f.labor || 0, bom: lines },
+      "product.manage", A.createProduct, { sku: f.sku, name: f.name, laborCost: +f.labor || 0, bom: lines, variants },
     );
-    if (r?.ok) { setF({ sku: "", name: "", labor: f.labor }); setBom([{ key: seq, material: usable[0]?.id ?? "", qty: "1" }]); setSeq(seq + 1); }
+    if (r?.ok) { setF({ sku: "", name: "", labor: f.labor }); setVariants([]); setBom([{ key: seq, material: usable[0]?.id ?? "", qty: "1" }]); setSeq(seq + 1); }
   };
 
   return (
@@ -89,6 +94,8 @@ function CreateProduct() {
           </Button>
         </div>
 
+        <VariantsEditor value={variants} onChange={setVariants} baseSku={f.sku} />
+
         <CalcHint>
           Giá vốn = phụ liệu <span className="num">{vnd(mat)}</span> + tiền công <span className="num">{vnd(+f.labor || 0)}</span> = <b className="num">{vnd(cost)}/cái</b>
         </CalcHint>
@@ -99,8 +106,37 @@ function CreateProduct() {
 }
 
 /* ---------- Chi tiết 1 sản phẩm khi bấm vào dòng ---------- */
+/* ---------- Sửa size + SKU của sản phẩm đã có ---------- */
+function VariantsDialog({ p, onClose }: { p: Product; onClose: () => void }) {
+  const act = useAction();
+  const [list, setList] = useState<ProductVariant[]>(p.variants?.length ? p.variants : []);
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    const r = await act("product.manage", A.setProductVariants, p.id, list);
+    setBusy(false);
+    if (r.ok) onClose();
+  };
+  return (
+    <Dialog open onOpenChange={x => { if (!x) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="font-serif text-lg text-brand">Size & SKU · {p.sku}</DialogTitle>
+          <DialogDescription>{p.name}. Mỗi size một mã SKU riêng (giống phiên bản trên Sapo).</DialogDescription>
+        </DialogHeader>
+        <VariantsEditor value={list} onChange={setList} baseSku={p.sku} />
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose}>Hủy</Button>
+          <Button onClick={save} disabled={busy}>Lưu size & SKU</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ProductDetail({ p, mat, stock }: { p: Product; mat: number; stock: number }) {
   const { data: s, can } = useStore();
+  const [editVariants, setEditVariants] = useState(false);
   const total = mat + p.laborCost;
   const matPct = total ? (mat / total) * 100 : 0;
   const orders = s.orders.filter(o => o.product === p.id).slice().sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
@@ -150,6 +186,26 @@ function ProductDetail({ p, mat, stock }: { p: Product; mat: number; stock: numb
 
       {/* Tóm tắt */}
       <div className="flex min-w-0 flex-col gap-3">
+        <div className="rounded-lg bg-surface-low p-3">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <span className="eyebrow">Size & SKU</span>
+            {can("product.manage") && (
+              <button type="button" onClick={() => setEditVariants(true)} className="inline-flex items-center gap-1 text-xs font-semibold text-brand hover:underline">
+                <Pencil className="size-3.5" /> {p.variants?.length ? "Sửa" : "Thêm size"}
+              </button>
+            )}
+          </div>
+          {p.variants?.length ? (
+            <div className="flex flex-wrap gap-1.5">
+              {p.variants.map(v => (
+                <span key={v.size} className="inline-flex items-center gap-1.5 rounded-md bg-surface px-2 py-1 text-[12.5px] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+                  <b className="text-brand">{v.size}</b><span className="num text-muted-foreground">{v.sku}</span>
+                </span>
+              ))}
+            </div>
+          ) : <p className="text-[12.5px] text-muted-foreground">Chưa khai báo SKU theo size.</p>}
+          {editVariants && <VariantsDialog p={p} onClose={() => setEditVariants(false)} />}
+        </div>
         <div className="rounded-lg bg-surface-low p-3">
           <div className="eyebrow mb-1.5">Cơ cấu giá vốn</div>
           <div className="flex h-2.5 overflow-hidden rounded-full bg-surface-3" role="img" aria-label={`Phụ liệu ${Math.round(matPct)}%, tiền công ${100 - Math.round(matPct)}%`}>
@@ -215,7 +271,7 @@ export default function ProductsPage() {
   const rows = s.products
     .map((p, i) => ({ p, i, mat: materialCost(p, s.materials), stock: stock[p.id] ?? 0 }))
     .filter(r => status === "all" || r.p.status === status)
-    .filter(r => matches(q, r.p.sku, r.p.name, r.p.bom.map(l => s.materials.find(m => m.id === l.material)?.name).join(" ")))
+    .filter(r => matches(q, r.p.sku, r.p.name, r.p.variants?.map(v => `${v.sku} ${v.size}`).join(" "), r.p.bom.map(l => s.materials.find(m => m.id === l.material)?.name).join(" ")))
     .sort((a, b) =>
       sort === "name" ? a.p.name.localeCompare(b.p.name, "vi")
       : sort === "sku" ? a.p.sku.localeCompare(b.p.sku, "vi", { numeric: true })
@@ -261,7 +317,7 @@ export default function ProductsPage() {
       <Panel
         title="Danh sách sản phẩm" icon={Shirt} flush
         tag={<span className="num text-xs text-subtle">{rows.length} / {s.products.length}</span>}
-        actions={<SearchBox value={q} onChange={v => { setQ(v); setLimit(PAGE); }} placeholder="Tìm SKU, tên, phụ liệu…" label="Tìm sản phẩm" />}
+        actions={<SearchBox value={q} onChange={v => { setQ(v); setLimit(PAGE); }} placeholder="Tìm SKU, SKU size, tên, phụ liệu…" label="Tìm sản phẩm" />}
       >
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3 pb-2 md:px-5">
           <div role="group" aria-label="Lọc tình trạng" className="flex gap-1 overflow-x-auto">
@@ -289,7 +345,7 @@ export default function ProductsPage() {
             <thead>
               <tr>
                 <th className="w-8" />
-                <th>SKU</th><th>Sản phẩm</th><th className="r">Phụ liệu</th><th className="r">Tiền công</th>
+                <th>SKU</th><th>Sản phẩm</th><th>Size</th><th className="r">Phụ liệu</th><th className="r">Tiền công</th>
                 <th className="r">Giá vốn / cái</th><th className="r">Tồn TP</th><th>Tình trạng</th>
               </tr>
             </thead>
@@ -311,6 +367,11 @@ export default function ProductsPage() {
                       </td>
                       <td className="num font-bold whitespace-nowrap text-brand">{p.sku}</td>
                       <td className="font-serif font-medium">{p.name}</td>
+                      <td className="whitespace-nowrap">
+                        {p.variants?.length
+                          ? <span className="flex gap-1">{p.variants.map(v => <span key={v.size} title={`SKU ${v.sku}`} className="rounded bg-surface-2 px-1.5 text-[11.5px] font-semibold text-brand">{v.size}</span>)}</span>
+                          : <span className="text-xs text-subtle">—</span>}
+                      </td>
                       <td className="r num">{p.bom.length}</td>
                       <td className="r num">{vnd(p.laborCost)}</td>
                       <td className="r num font-semibold text-brand">{vnd(mat + p.laborCost)}</td>
@@ -322,7 +383,7 @@ export default function ProductsPage() {
                     {isOpen && (
                       <tr className="hover:!bg-transparent">
                         <td />
-                        <td colSpan={7} className="!pt-0">
+                        <td colSpan={8} className="!pt-0">
                           <ProductDetail p={p} mat={mat} stock={st} />
                         </td>
                       </tr>
@@ -330,7 +391,7 @@ export default function ProductsPage() {
                   </Fragment>
                 );
               }) : (
-                <tr><td colSpan={8}><EmptyState>{s.products.length ? "Không tìm thấy sản phẩm phù hợp." : "Chưa có sản phẩm nào. Thêm ở khối bên trên."}</EmptyState></td></tr>
+                <tr><td colSpan={9}><EmptyState>{s.products.length ? "Không tìm thấy sản phẩm phù hợp." : "Chưa có sản phẩm nào. Thêm ở khối bên trên."}</EmptyState></td></tr>
               )}
             </tbody>
           </table>

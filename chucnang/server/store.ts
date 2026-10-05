@@ -5,7 +5,7 @@ import { hashPassword } from "./auth";
 import { ACTIONS, type Result } from "../core/actions";
 import { can } from "../core/permissions";
 import { COLLECTIONS, createBaseState, type CollectionKey, type DataState } from "../core/state";
-import type { AuditEntry, User } from "../core/types";
+import type { AuditEntry, Notification, User } from "../core/types";
 
 type Meta = { _id: "meta"; version: number; seq: DataState["seq"] };
 const KEYS = Object.keys(COLLECTIONS) as CollectionKey[];
@@ -35,6 +35,7 @@ async function ensureIndexes() {
     ttlIndex("notifications", "sentAt", RETENTION.notificationDays * 86400),
     ttlIndex("audit", "at", RETENTION.auditDays * 86400),
     ttlIndex("sessions", "expiresAt", 0),
+    ttlIndex("tg_links", "expiresAt", 0),
     db.collection("audit").createIndex({ userId: 1, at: -1 }),
     db.collection("events").createIndex({ at: 1 }),
   ]);
@@ -118,14 +119,17 @@ export async function audit(e: Omit<AuditEntry, "id" | "at">) {
  * Chạy 1 thao tác cho người dùng `user`. Kiểm tra quyền ở server, chạy trên bản sao,
  * ghi lại nếu thành công. Nếu cùng lúc có người khác vừa ghi (version đổi) thì chạy lại.
  */
-export async function runAction(user: User, name: string, args: unknown[]): Promise<Result> {
+// onNotify: nhận các thông báo mới sinh ra (để route gửi Telegram sau khi trả lời người dùng)
+export async function runAction(user: User, name: string, args: unknown[], onNotify?: (n: Notification[], users: User[]) => void): Promise<Result> {
   const entry = ACTIONS[name];
   if (!entry) return { ok: false, error: "Thao tác không tồn tại" };
   const [perm, fn, label] = entry;
   if (perm && !can(user.role, perm)) return { ok: false, error: "Vai trò của bạn không có quyền làm thao tác này" };
 
   const db = await getDb();
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    // có người vừa ghi chen vào → đợi ngẫu nhiên một chút rồi chạy lại trên dữ liệu mới
+    if (attempt) await new Promise(r => setTimeout(r, 20 + Math.random() * 60 * attempt));
     const { state, version } = await loadState();
     const draft = structuredClone(state);
     const res = fn({ s: draft, me: user.name, meId: user.id, now: new Date() }, ...args);
@@ -140,6 +144,11 @@ export async function runAction(user: User, name: string, args: unknown[]): Prom
     cache = { state: draft, version: version + 1 };
     const ref = res.id ?? (typeof args[0] === "string" && /^(LSX|R)-/.test(args[0]) ? args[0] : undefined);
     await audit({ userId: user.id, userName: user.name, action: name, label, detail: res.msg, ref });
+    if (onNotify) {
+      const old = new Set(state.notifications.map(n => n.id));
+      const fresh = draft.notifications.filter(n => !old.has(n.id));
+      if (fresh.length) onNotify(fresh, draft.users);
+    }
     return res;
   }
   return { ok: false, error: "Đang có nhiều người thao tác cùng lúc, thử lại sau giây lát" };

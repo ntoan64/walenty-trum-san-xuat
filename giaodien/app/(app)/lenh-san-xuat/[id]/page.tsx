@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Coins, PackageOpen, Pencil, Plus, Scale, Settings2, Trash2, Wrench } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  byId, closeChecklist, canClose, DEFECT_KIND, DEFECTS, isBalanced, knownDefects, isOrderLate, LOSS_ALLOWED, SIZES,
+  byId, closeChecklist, canClose, DEFECT_KIND, DEFECTS, isBalanced, knownDefects, sizeProgress, isOrderLate, LOSS_ALLOWED, SIZES,
   type Batch, type DefectLine, type ProductionOrder,
 } from "@core";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,55 @@ function ActionBox({ title, desc, children, tone }: { title: string; desc?: Reac
 }
 
 function ReceiveForm({ o, max, ws }: { o: ProductionOrder; max: number; ws: string }) {
+  const prog = sizeProgress(o);
+  return prog.length ? <ReceiveBySize o={o} max={max} ws={ws} prog={prog} /> : <ReceiveTotal o={o} max={max} ws={ws} />;
+}
+
+function ReceiveBySize({ o, max, ws, prog }: { o: ProductionOrder; max: number; ws: string; prog: ReturnType<typeof sizeProgress> }) {
+  const act = useConfirmAction();
+  const { data: s } = useStore();
+  const variants = byId(s.products, o.product)?.variants;
+  const [v, setV] = useDraft<Record<string, string>>(`rcv-size:${o.id}`, () => Object.fromEntries(prog.map(p => [p.size, String(p.missing)])));
+  const sizes = prog.map(p => ({ size: p.size, qty: Math.max(0, Math.floor(+(v[p.size] ?? 0) || 0)) }));
+  const total = sizes.reduce((t, x) => t + x.qty, 0);
+  const submit = async () => {
+    const r = await act(
+      { title: "Nhận hàng từ xưởng?", confirmLabel: "Nhận hàng",
+        description: <Summary rows={[
+          ["Lệnh", o.code], ["Xưởng", ws],
+          ["Nhận theo size", sizes.filter(x => x.qty).map(x => `${x.size}: ${x.qty}`).join(" · ") || "—"],
+          ["Tổng nhận", `${total} cái`], ["Còn chưa trả sau đợt này", `${max - total} cái`],
+        ]} /> },
+      "order.receive", A.receive, o.id, { sizes: sizes.filter(x => x.qty) },
+    );
+    // nhận xong: ô mỗi size về số còn thiếu mới
+    if (r?.ok) setV(Object.fromEntries(prog.map(p => [p.size, String(Math.max(0, p.missing - (sizes.find(x => x.size === p.size)?.qty ?? 0)))])));
+  };
+  return (
+    <ActionBox title="Nhận hàng từ xưởng (theo size)" desc={`Xưởng còn ${max} cái chưa trả. Nhập số nhận đợt này của từng size, mỗi đợt QC riêng.`}>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-2">
+        {prog.map(p => (
+          <label key={p.size} className={cn("flex flex-col gap-1 rounded-lg p-2", p.missing ? "bg-surface" : "bg-ok-soft/60")}>
+            <span className="flex items-baseline justify-between gap-1 text-xs">
+              <b className="text-brand">{p.size}</b>
+              <span className={p.missing ? "text-bad" : "text-ok"}>{p.missing ? `thiếu ${p.missing}` : "đủ"}</span>
+            </span>
+            {variants?.find(x => x.size === p.size) && <span className="num -mt-1 text-[10.5px] text-subtle">{variants.find(x => x.size === p.size)!.sku}</span>}
+            <input type="number" min={0} max={p.missing} step={1} inputMode="numeric" disabled={!p.missing} aria-label={`Số nhận size ${p.size}`}
+              className="field-input num !min-h-9 !py-1.5" value={p.missing ? v[p.size] ?? "" : "0"}
+              onChange={e => setV({ ...v, [p.size]: e.target.value })} />
+          </label>
+        ))}
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span className="text-[13px]">Đợt này nhận <b className="num text-brand">{total}</b> cái</span>
+        <Button onClick={submit} disabled={!total}>Nhận hàng</Button>
+      </div>
+    </ActionBox>
+  );
+}
+
+function ReceiveTotal({ o, max, ws }: { o: ProductionOrder; max: number; ws: string }) {
   const act = useConfirmAction();
   const [v, setV] = useDraft(`rcv:${o.id}`, String(max));
   const [err, setErr] = useState<string | null>(null);
@@ -65,7 +114,7 @@ function QCForm({ o, b }: { o: ProductionOrder; b: Batch }) {
   const { data: s } = useStore();
   // gợi ý = lỗi QC đã từng tự ghi + danh sách chuẩn
   const suggest = knownDefects(s.orders, s.repairs, DEFECTS);
-  const sizes = o.sizes?.map(x => x.size) ?? [];
+  const sizes = (b.sizes?.length ? b.sizes : o.sizes)?.map(x => x.size) ?? [];
   const [lines, setLines] = useDraft<DLine[]>(`qc:${b.id}:lines`, []);
   const [seq, setSeq] = useDraft(`qc:${b.id}:seq`, 1);
   const toLines = (): DefectLine[] => lines.map(l => ({ kind: l.kind, size: l.size, defect: l.defect, qty: Math.floor(+l.qty || 0) }));
@@ -94,7 +143,7 @@ function QCForm({ o, b }: { o: ProductionOrder; b: Batch }) {
 
   return (
     <ActionBox
-      title={`QC đợt nhận ${fmtDT(b.receivedAt)} · ${b.received} cái`}
+      title={`QC đợt nhận ${fmtDT(b.receivedAt)} · ${b.received} cái${b.sizes?.length ? ` (${b.sizes.map(x => `${x.size}:${x.qty}`).join(" ")})` : ""}`}
       desc="Không có lỗi thì bấm Lưu luôn. Có lỗi thì thêm từng dòng: cách xử lý, size, tự ghi lỗi gì, số lượng."
     >
       <div className="flex flex-col gap-2">
@@ -436,6 +485,29 @@ export default function OrderDetailPage() {
           <BalanceLegend b={b} />
           <BalanceEquation qty={o.qty} b={b} settled={settled} />
           {!isBalanced(o, b) && <p className="mt-2 text-xs text-bad">Số liệu không cân, kiểm tra lại các đợt nhận.</p>}
+          {sizeProgress(o).length > 0 && o.step !== "cut" && (
+            <div className="mt-4">
+              <div className="eyebrow mb-1.5">Xưởng trả theo size</div>
+              <div className="overflow-hidden rounded-lg border border-line">
+                <table className="w-full text-[13px]">
+                  <thead className="bg-surface-low text-left text-[11px] tracking-[0.06em] text-muted-foreground uppercase">
+                    <tr><th className="px-3 py-1.5">Size</th><th className="px-3 py-1.5 text-right">Đặt</th><th className="px-3 py-1.5 text-right">Đã nhận</th><th className="px-3 py-1.5 text-right">Còn thiếu</th></tr>
+                  </thead>
+                  <tbody>
+                    {sizeProgress(o).map(z => (
+                      <tr key={z.size} className="border-t border-line">
+                        <td className="px-3 py-1.5 font-bold text-brand">{z.size}{p.variants?.find(v => v.size === z.size) && <span className="num ml-1.5 text-[11px] font-normal text-subtle">{p.variants.find(v => v.size === z.size)!.sku}</span>}</td>
+                        <td className="num px-3 py-1.5 text-right">{z.ordered}</td>
+                        <td className="num px-3 py-1.5 text-right">{z.received}</td>
+                        <td className={cn("num px-3 py-1.5 text-right font-semibold", z.missing ? "text-bad" : "text-ok")}>{z.missing || "✓"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {o.batches.some(x => !x.sizes?.length) && <p className="mt-1 text-[11.5px] text-subtle">Các đợt nhận trước khi có nhận theo size không được tính vào bảng này.</p>}
+            </div>
+          )}
         </Panel>
         <Panel title="Thao tác" icon={Settings2}>
           <div className="flex flex-col gap-3">{blocks}</div>
@@ -452,7 +524,7 @@ export default function OrderDetailPage() {
               {o.batches.length ? o.batches.map(bt => (
                 <tr key={bt.id}>
                   <td className="num">{fmtDT(bt.receivedAt)}</td>
-                  <td className="r num">{bt.received}</td>
+                  <td className="r num">{bt.received}{bt.sizes?.length ? <div className="text-[11px] font-normal text-subtle">{bt.sizes.map(x => `${x.size}:${x.qty}`).join(" ")}</div> : null}</td>
                   {bt.qc ? (
                     <>
                       <td className="r num">{bt.qc.pass}</td><td className="r num">{bt.qc.sua}</td>

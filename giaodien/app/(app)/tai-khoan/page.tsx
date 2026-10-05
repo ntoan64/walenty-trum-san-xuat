@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Camera, KeyRound, Trash2, UserRound } from "lucide-react";
+import { Camera, KeyRound, Send, Trash2, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { ROLE_LABEL } from "@core";
 import { Button } from "@/components/ui/button";
@@ -9,13 +9,13 @@ import { useStore, A } from "@/lib/store";
 import { useConfirmAction } from "@/lib/use-action";
 import { Avatar, resizeImage } from "@/components/xf/avatar";
 import { useDraft } from "@/lib/use-draft";
-import { Field, PageHeader, Panel } from "@/components/xf/basics";
+import { Field, PageHeader, Panel, StatusPill } from "@/components/xf/basics";
 
 // Thông tin tài khoản: mỗi người tự đổi tên hiển thị, số điện thoại, ảnh đại diện
 // key theo người dùng để form nạp lại khi đổi tài khoản
 export default function ProfilePage() {
   const { meUser } = useStore();
-  return <><Profile key={meUser.id} /><ChangePassword /></>;
+  return <><Profile key={meUser.id} /><TelegramConnect /><ChangePassword /></>;
 }
 
 function Profile() {
@@ -129,6 +129,55 @@ function ChangePassword() {
         </Field>
         <div><Button type="submit" disabled={busy || !f.current || !f.next}>Đổi mật khẩu</Button></div>
       </form>
+    </Panel>
+  );
+}
+
+/* ---------- Kết nối Telegram: mỗi người tự bấm, nhận thông báo riêng ---------- */
+function TelegramConnect() {
+  const { meUser, refresh } = useStore();
+  const [busy, setBusy] = useState(false);
+  const linked = !!meUser.telegramChatId;
+
+  const connect = async () => {
+    setBusy(true);
+    // mở tab trước (trình duyệt điện thoại chặn mở tab sau khi chờ mạng)
+    const win = window.open("about:blank", "_blank");
+    try {
+      const r = await fetch("/api/telegram/link", { method: "POST" });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.url) { win?.close(); toast.error(j.error ?? "Không tạo được liên kết Telegram"); return; }
+      if (win) win.location.href = j.url; else location.href = j.url;
+      toast.success("Bấm Start trong Telegram để hoàn tất kết nối");
+      // chờ người dùng bấm Start rồi tải lại trạng thái
+      setTimeout(() => refresh(), 8000);
+      setTimeout(() => refresh(), 20000);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const disconnect = async () => {
+    setBusy(true);
+    const r = await fetch("/api/telegram/link", { method: "DELETE" });
+    setBusy(false);
+    if (r.ok) { toast.success("Đã ngắt kết nối Telegram"); refresh(); } else toast.error("Không ngắt được, thử lại");
+  };
+
+  return (
+    <Panel title="Thông báo Telegram" icon={Send}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-[13px]">
+          <div className="mb-1">{linked ? <StatusPill tone="ok" dot>Đã kết nối</StatusPill> : <StatusPill tone="muted" dot>Chưa kết nối</StatusPill>}</div>
+          <p className="text-muted-foreground">
+            {linked
+              ? "Bạn đang nhận thông báo qua bot @WalentySanXuatBot trên Telegram."
+              : "Bấm Kết nối → Telegram mở bot Walenty → bấm Start. Từ đó thông báo (hàng về, phiếu sửa, sắp hết hàng…) sẽ gửi thẳng vào Telegram của bạn."}
+          </p>
+        </div>
+        {linked
+          ? <Button variant="secondary" onClick={disconnect} disabled={busy}>Ngắt kết nối</Button>
+          : <Button onClick={connect} disabled={busy}><Send /> Kết nối Telegram</Button>}
+      </div>
     </Panel>
   );
 }

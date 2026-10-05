@@ -139,6 +139,11 @@ describe("3. Xưởng, phụ liệu, sản phẩm", () => {
     await ok(admin, "createProduct", { sku: "sm01", name: "Áo sơ mi trắng", laborCost: 45000, bom: [{ material: vai.id, qtyPerUnit: 1.3 }, { material: nut.id, qtyPerUnit: 8 }, { material: chi.id, qtyPerUnit: 0.1 }] });
     expect(await fails(admin, "createProduct", { sku: "SM01", name: "Trùng", laborCost: 1, bom: [{ material: vai.id, qtyPerUnit: 1 }] })).toMatch(/đã có/);
     expect((await state()).products[0].sku).toBe("SM01");
+    const pid = (await state()).products[0].id;
+    await ok(admin, "setProductVariants", pid, [{ size: "s", sku: "pvn5748" }, { size: "M", sku: "PVN5749" }]);
+    expect((await state()).products[0].variants).toEqual([{ size: "S", sku: "PVN5748" }, { size: "M", sku: "PVN5749" }]);
+    expect(await fails(admin, "setProductVariants", pid, [{ size: "S", sku: "A1" }, { size: "S", sku: "A2" }])).toMatch(/trùng/);
+    expect(await fails(qc, "setProductVariants", pid, [])).toMatch(/quyền/);
   });
 });
 
@@ -167,10 +172,14 @@ describe("4. Lệnh sản xuất trọn vòng", () => {
 
   it("cắt → nhận hàng → QC theo size tự tạo phiếu sửa + nhập kho thành phẩm", async () => {
     await ok(kho, "confirmCut", orderId);
-    expect(await fails(kho, "receive", orderId, 41)).toMatch(/1 đến 40/);
-    await ok(kho, "receive", orderId, 38);
+    expect(await fails(kho, "receive", orderId, 38)).toMatch(/theo từng size/); // lệnh có size thì phải nhập theo size
+    expect(await fails(kho, "receive", orderId, { sizes: [{ size: "M", qty: 21 }] })).toMatch(/còn thiếu 20/);
+    await ok(kho, "receive", orderId, { sizes: [{ size: "S", qty: 10 }, { size: "M", qty: 18 }, { size: "L", qty: 10 }] });
+    const { sizeProgress } = await import("../core/orders");
+    expect(sizeProgress((await state()).orders[0]).find(x => x.size === "M")?.missing).toBe(2); // QC thấy xưởng còn thiếu 2 cái size M
     const b = (await state()).orders[0].batches[0];
     expect(await fails(qc, "saveQC", orderId, b.id, { lines: [{ kind: "sua", size: "XL", defect: "Bỏ mũi", qty: 1 }] })).toMatch(/không có trong lệnh/);
+    expect(await fails(qc, "saveQC", orderId, b.id, { lines: [{ kind: "sua", size: "S", defect: "Bỏ mũi", qty: 11 }] })).toMatch(/chỉ nhận 10/);
     expect(await fails(qc, "saveQC", orderId, b.id, { lines: [{ kind: "sua", size: "M", defect: " ", qty: 1 }] })).toMatch(/mô tả/);
     await ok(qc, "saveQC", orderId, b.id, { lines: [{ kind: "sua", size: "M", defect: "Bỏ mũi ở tay", qty: 3 }, { kind: "vai", size: "S", defect: "Lỗi sợi", qty: 1 }] });
     const s = await state();

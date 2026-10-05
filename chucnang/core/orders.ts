@@ -59,6 +59,14 @@ export const isRepairLate = (r: RepairTicket, now: Date) =>
   (r.status === 'sent' || r.status === 'received') && r.dueAt < now
 
 export const SIZES = ["XS", "S", "M", "L", "XL", "XXL"]
+
+// Theo từng size: đặt bao nhiêu, đã nhận bao nhiêu, xưởng còn thiếu bao nhiêu
+export function sizeProgress(order: ProductionOrder) {
+  return (order.sizes ?? []).map(z => {
+    const received = order.batches.reduce((t, b) => t + (b.sizes?.find(x => x.size === z.size)?.qty ?? 0), 0);
+    return { size: z.size, ordered: z.qty, received, missing: Math.max(0, z.qty - received) };
+  });
+}
 export const DEFECT_KIND: Record<"sua" | "vai" | "hong", string> = {
   sua: "Trả xưởng sửa", vai: "Loại · lỗi vải (không tính xưởng)", hong: "Loại · hàng B (hỏng)",
 }

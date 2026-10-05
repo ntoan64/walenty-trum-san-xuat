@@ -68,12 +68,19 @@ export interface BomLine {
   qtyPerUnit: number
 }
 
+// Mỗi size một mã SKU riêng (giống phiên bản trên Sapo)
+export interface ProductVariant {
+  size: string
+  sku: string
+}
+
 export interface Product {
   id: string
-  sku: string
+  sku: string // mã chung của mẫu
   name: string
   laborCost: number
   bom: BomLine[]
+  variants?: ProductVariant[]
   status: ItemStatus
 }
 
@@ -120,6 +127,7 @@ export interface Batch {
   id: string
   receivedAt: Date
   received: number
+  sizes?: SizeQty[] // nhận theo size (lệnh có size)
   qc?: BatchQC | null
 }
 

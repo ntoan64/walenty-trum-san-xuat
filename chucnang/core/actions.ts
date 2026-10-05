@@ -2,8 +2,8 @@
 // Mỗi hàm nhận bản nháp state (đã clone) và sửa trực tiếp; trả lỗi thì bản nháp bị bỏ.
 import {
   applyImport, applyIssue, byId, calcBalance, canClose, DAY, REPAIR_DUE_DAYS,
-  MATERIAL_CATEGORIES, MATERIAL_STATUS, nextMaterialCode, okLevel, isLive, PRODUCT_STATUS, needFor, shortages, unitCost, unusableMaterials, validateDefectLines, validateQC, validateRequc,
-  type BomLine, type DefectLine, type EventType, type SizeQty, type ItemStatus, type Material, type MaterialCategory, type ProductionOrder, type Role, type Action,
+  MATERIAL_CATEGORIES, MATERIAL_STATUS, nextMaterialCode, okLevel, isLive, PRODUCT_STATUS, needFor, shortages, unitCost, unusableMaterials, sizeProgress, validateDefectLines, validateQC, validateRequc,
+  type BomLine, type DefectLine, type EventType, type SizeQty, type ItemStatus, type Material, type MaterialCategory, type ProductionOrder, type ProductVariant, type Role, type Action,
 } from "./index";
 import type { DataState } from "./state";
 import { fmtD, nf, vnd } from "./format";
@@ -245,10 +245,33 @@ export function noteCustomerRepair(c: Ctx, id: string, text: string): Result {
 }
 
 /* ---------- sản phẩm ---------- */
-export function createProduct(c: Ctx, a: { sku: string; name: string; laborCost: number; bom: BomLine[] }): Result {
+// Kiểm tra danh sách size + SKU: không trùng size, SKU không trùng với SKU khác trong hệ thống
+function variantsError(c: Ctx, variants: ProductVariant[], selfId?: string) {
+  if (variants.length > LIMITS.sizes) return `Tối đa ${LIMITS.sizes} size`;
+  const sizes = variants.map(v => v.size), skus = variants.map(v => v.sku);
+  if (variants.some(v => !v.size || v.size.length > 10)) return "Tên size không hợp lệ";
+  if (variants.some(v => !CODE_RE.test(v.sku))) return "SKU size chỉ gồm chữ, số, dấu gạch ngang (2–20 ký tự)";
+  if (new Set(sizes).size !== sizes.length) return "Size bị trùng";
+  if (new Set(skus).size !== skus.length) return "Hai size đang trùng SKU";
+  for (const p of c.s.products) {
+    if (p.id === selfId) continue;
+    const taken = [p.sku, ...(p.variants ?? []).map(v => v.sku)];
+    const dup = skus.find(x => taken.includes(x));
+    if (dup) return `SKU ${dup} đã dùng cho ${p.sku} · ${p.name}`;
+  }
+  return null;
+}
+const cleanVariants = (vs: ProductVariant[] = []) =>
+  vs.map(v => ({ size: String(v.size ?? "").trim().toUpperCase(), sku: String(v.sku ?? "").trim().toUpperCase() })).filter(v => v.size || v.sku);
+
+export function createProduct(c: Ctx, a: { sku: string; name: string; laborCost: number; bom: BomLine[]; variants?: ProductVariant[] }): Result {
   const sku = a.sku.trim().toUpperCase(), name = a.name.trim();
   if (!CODE_RE.test(sku)) return fail("SKU chỉ gồm chữ, số, dấu gạch ngang (2–20 ký tự)");
-  if (c.s.products.some(p => p.sku === sku)) return fail(`SKU ${sku} đã có`);
+  if (c.s.products.some(p => p.sku === sku || p.variants?.some(v => v.sku === sku))) return fail(`SKU ${sku} đã có`);
+  const variants = cleanVariants(a.variants);
+  const verr = variantsError(c, variants);
+  if (verr) return fail(verr);
+  if (variants.some(v => v.sku === sku)) return fail("SKU size không được trùng SKU chung của mẫu");
   if (!name) return fail("Nhập tên sản phẩm");
   if (name.length > LIMITS.name) return fail("Tên sản phẩm quá dài");
   if (a.laborCost > LIMITS.labor) return fail("Tiền công may quá lớn");
@@ -260,8 +283,20 @@ export function createProduct(c: Ctx, a: { sku: string; name: string; laborCost:
   if (bom.some(l => !(l.qtyPerUnit > 0))) return fail("Định mức mỗi phụ liệu phải lớn hơn 0");
   if (new Set(bom.map(l => l.material)).size !== bom.length) return fail("Một phụ liệu bị chọn 2 lần");
   if (bom.some(l => byId(c.s.materials, l.material)?.status !== "active")) return fail("Định mức chỉ dùng phụ liệu đang dùng");
-  c.s.products.push({ id: uid(c, "p"), sku, name, laborCost: a.laborCost, bom, status: "active" });
-  return ok(`Đã thêm sản phẩm ${sku}`);
+  c.s.products.push({ id: uid(c, "p"), sku, name, laborCost: a.laborCost, bom, variants: variants.length ? variants : undefined, status: "active" });
+  return ok(`Đã thêm sản phẩm ${sku}${variants.length ? ` (${variants.length} size)` : ""}`);
+}
+
+// Thêm / sửa size + SKU cho sản phẩm đã có
+export function setProductVariants(c: Ctx, id: string, list: ProductVariant[]): Result {
+  const p = byId(c.s.products, id);
+  if (!p) return fail("Không tìm thấy sản phẩm");
+  const variants = cleanVariants(list);
+  const verr = variantsError(c, variants, id);
+  if (verr) return fail(verr);
+  if (variants.some(v => v.sku === p.sku)) return fail("SKU size không được trùng SKU chung của mẫu");
+  p.variants = variants.length ? variants : undefined;
+  return ok(`${p.sku}: đã lưu ${variants.length} size`);
 }
 
 export function setProductStatus(c: Ctx, id: string, status: ItemStatus): Result {
@@ -364,15 +399,32 @@ export function confirmCut(c: Ctx, orderId: string): Result {
   return ok("Đã chuyển sang bước may");
 }
 
-export function receive(c: Ctx, orderId: string, qty: number): Result {
+// Nhận hàng 1 đợt. Lệnh có size: truyền { sizes } (số nhận từng size, không vượt số còn thiếu của size đó)
+export function receive(c: Ctx, orderId: string, input: number | { sizes: SizeQty[] }): Result {
   const o = getOrder(c, orderId);
   if (!o || (o.step !== "sew" && o.step !== "qc")) return fail("Lệnh chưa ở bước nhận hàng");
   const b = calcBalance(o, repairsOf(c.s, o));
+  let qty: number;
+  let sizes: SizeQty[] | undefined;
+  if (typeof input === "number") {
+    if (o.sizes?.length) return fail("Lệnh có size, nhập số nhận theo từng size");
+    qty = input;
+  } else {
+    const prog = sizeProgress(o);
+    sizes = input.sizes.map(x => ({ size: String(x.size).trim().toUpperCase(), qty: x.qty })).filter(x => x.qty);
+    for (const x of sizes) {
+      const p = prog.find(y => y.size === x.size);
+      if (!p) return fail(`Size ${x.size} không có trong lệnh`);
+      if (!isInt(x.qty) || x.qty < 0) return fail("Số lượng mỗi size phải là số nguyên");
+      if (x.qty > p.missing) return fail(`Size ${x.size} xưởng chỉ còn thiếu ${p.missing} cái`);
+    }
+    qty = sizes.reduce((t, x) => t + x.qty, 0);
+  }
   if (!isInt(qty) || qty < 1 || qty > b.notReturned) return fail(`Nhập từ 1 đến ${b.notReturned}`);
-  o.batches.push({ id: uid(c, "b"), receivedAt: tick(c), received: qty, qc: null });
+  o.batches.push({ id: uid(c, "b"), receivedAt: tick(c), received: qty, sizes, qc: null });
   o.step = "qc";
   event(c, "receive", o, qty);
-  notify(c, ["qc"], `📦 Hàng về chờ QC: ${o.code} · ${wsName(c.s, o.workshop)} trả ${qty} cái ${prodOf(c.s, o).name}.`);
+  notify(c, ["qc"], `📦 Hàng về chờ QC: ${o.code} · ${wsName(c.s, o.workshop)} trả ${qty} cái ${prodOf(c.s, o).name}${sizes ? ` (${sizes.map(x => `${x.size}:${x.qty}`).join(" ")})` : ""}.`);
   return ok(`Đã nhận ${qty} cái, chờ QC`);
 }
 
@@ -386,8 +438,14 @@ export function saveQC(c: Ctx, orderId: string, batchId: string, a: { lines: Def
   if (a.lines.some(l => tooLong(l.defect, LIMITS.name) || tooLong(l.size, 10))) return fail("Mô tả lỗi hoặc size quá dài");
   if (a.lines.some(l => !["sua", "vai", "hong"].includes(l.kind))) return fail("Loại lỗi không hợp lệ");
   const lines = a.lines.map(l => ({ ...l, size: l.size.trim(), defect: l.defect.trim() }));
-  const lerr = validateDefectLines(lines, o.sizes?.map(x => x.size));
+  const lerr = validateDefectLines(lines, (bt.sizes?.length ? bt.sizes : o.sizes)?.map(x => x.size));
   if (lerr) return fail(lerr);
+  if (bt.sizes?.length) {
+    for (const z of bt.sizes) {
+      const n = lines.filter(l => l.size === z.size).reduce((t, l) => t + l.qty, 0);
+      if (n > z.qty) return fail(`Size ${z.size} đợt này chỉ nhận ${z.qty} cái, không thể có ${n} cái lỗi`);
+    }
+  }
   const tot = (k: DefectLine["kind"]) => lines.filter(l => l.kind === k).reduce((t, l) => t + l.qty, 0);
   const sua = tot("sua"), vai = tot("vai"), hong = tot("hong");
   const q = { pass: bt.received - sua - vai - hong, sua, vai, hong };
@@ -666,6 +724,7 @@ export const ACTIONS: Record<string, [Action | null, (c: Ctx, ...args: any[]) =>
   noteCustomerRepair: ["customer.repair", noteCustomerRepair, "Ghi chú đồ khách"],
   createProduct: ["product.manage", createProduct, "Thêm sản phẩm"],
   setProductStatus: ["product.manage", setProductStatus, "Đổi tình trạng sản phẩm"],
+  setProductVariants: ["product.manage", setProductVariants, "Sửa size + SKU sản phẩm"],
   createOrder: ["order.create", createOrder, "Tạo lệnh sản xuất"],
   confirmCut: ["order.cut", confirmCut, "Xác nhận đã cắt"],
   receive: ["order.receive", receive, "Nhận hàng từ xưởng"],
