@@ -235,7 +235,7 @@ describe('tính giá theo file TÍNH GIÁ SP', () => {
 })
 
 describe('đồng bộ file NVL', () => {
-  it('tồn đầu + nhập − xuất theo ngày, tồn âm đưa về 0, chạy lại bị chặn', async () => {
+  it('tồn đầu + nhập − xuất theo ngày, tồn âm giữ nguyên theo file, chạy lại bị chặn', async () => {
     const { importNvl } = await import('./actions')
     const { createBaseState } = await import('./state')
     const s = createBaseState()
@@ -257,7 +257,7 @@ describe('đồng bộ file NVL', () => {
     const m1 = s.materials.find(m => m.code === 'VC-0001')!, m2 = s.materials.find(m => m.code === 'VC-0002')!
     expect(m1.stock).toBe(12)
     expect(m1.avgPrice).toBe(53000)
-    expect(m2.stock).toBe(0)
+    expect(m2.stock).toBe(-2)
     expect(s.materialTxns.filter(t => t.material === m1.id && t.type === 'in').reduce((t, x) => t + x.qty * (x.price ?? 0), 0)).toBe(5 * 53000)
     expect(importNvl(c, { openingDate: '2025-09-30', materials: [{ code: 'VC-0001', name: 'x', unit: 'mét', category: 'vai', price: 1, opening: 0 }], moves: [], boms: [] }).ok).toBe(false)
   })

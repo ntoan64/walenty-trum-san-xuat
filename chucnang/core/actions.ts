@@ -445,13 +445,8 @@ export function importNvl(c: Ctx, f: NvlFile): Result {
   }
   // mã có giá trong file nhưng chưa từng nhập → lấy giá file làm giá bình quân ban đầu
   for (const x of f.materials) { const m = byCode.get(String(x.code).trim()); if (m && !m.avgPrice && x.price > 0) m.avgPrice = x.price; }
-  // tồn âm (file ghi xuất nhiều hơn nhập) → đưa về 0, ghi lại để kiểm tra
-  const fixed: string[] = [];
-  for (const m of new Set(byCode.values())) if (m.stock < 0) {
-    fixed.push(`${m.code} ${nf(m.stock, 1)}`);
-    c.s.materialTxns.push({ id: uid(c, "t"), material: m.id, type: "adjust", qty: -m.stock, reason: `${NVL_TAG}: tồn âm ${nf(m.stock, 1)} đưa về 0`, stockAfter: 0, avgAfter: m.avgPrice, by: c.me, at: c.now });
-    m.stock = 0;
-  }
+  // tồn âm (file ghi xuất nhiều hơn nhập) giữ nguyên như file, chỉ báo lại để kiểm tra
+  const negative = [...new Set(byCode.values())].filter(m => m.stock < 0);
   let boms = 0;
   for (const b of f.boms ?? []) {
     const p = byId(c.s.products, b.product);
@@ -464,7 +459,7 @@ export function importNvl(c: Ctx, f: NvlFile): Result {
     } else p.bom = lines;
     boms++;
   }
-  return ok(`NVL: ${created} phụ liệu mới, ${moves.length} lần nhập / xuất, ${boms} định mức${fixed.length ? `, ${fixed.length} mã tồn âm đưa về 0` : ""}`);
+  return ok(`NVL: ${created} phụ liệu mới, ${moves.length} lần nhập / xuất, ${boms} định mức${negative.length ? `, ${negative.length} mã tồn âm (giữ nguyên theo file)` : ""}`);
 }
 
 // Tìm phiên bản theo SKU / barcode (quét mã)
