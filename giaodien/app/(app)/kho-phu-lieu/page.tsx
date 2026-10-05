@@ -19,6 +19,7 @@ import { Summary } from "@/components/xf/confirm-provider";
 import { ImportTable } from "@/components/xf/import-table";
 import { StatusSelect } from "@/components/xf/status-select";
 import { useDraft } from "@/lib/use-draft";
+import { ExportButton } from "@/components/xf/export-button";
 import { EmptyState, NumberField, PageHeader, Panel, StatCard, StatusPill, TableWrap, Tag } from "@/components/xf/basics";
 
 const CATS = Object.entries(MATERIAL_CATEGORIES) as [MaterialCategory, string][];
@@ -112,6 +113,16 @@ export default function MaterialsPage() {
           </div>
         }
       />
+      <div className="flex justify-end">
+        <ExportButton name="kho-phu-lieu" build={() => [
+          { name: "Tồn kho",
+            columns: [{ header: "Mã", key: "code" }, { header: "Tên", key: "name", width: 26 }, { header: "Loại", key: "cat" }, { header: "ĐVT", key: "unit" }, { header: "Tồn", key: "stock", fmt: "dec" }, { header: "Giá BQ", key: "avg", fmt: "money" }, { header: "Giá trị tồn", key: "value", fmt: "money" }, { header: "Báo hết dưới", key: "min", fmt: "dec" }, { header: "Báo đủ từ", key: "ok", fmt: "dec" }, { header: "Tình trạng", key: "status" }],
+            rows: s.materials.map(m => ({ code: m.code, name: m.name, cat: MATERIAL_CATEGORIES[m.category], unit: m.unit, stock: m.stock, avg: m.avgPrice, value: m.stock * m.avgPrice, min: m.minStock, ok: okLevel(m), status: MATERIAL_STATUS[m.status] })) },
+          { name: "Lịch sử nhập xuất",
+            columns: [{ header: "Ngày giờ", key: "at", fmt: "datetime", width: 18 }, { header: "Mã", key: "code" }, { header: "Phụ liệu", key: "name", width: 24 }, { header: "Loại", key: "type" }, { header: "Số lượng", key: "qty", fmt: "dec" }, { header: "Đơn giá", key: "price", fmt: "money" }, { header: "Thành tiền", key: "money", fmt: "money" }, { header: "Nhà CC / Lệnh", key: "ref", width: 20 }, { header: "Ghi chú", key: "reason", width: 28 }, { header: "Tồn sau", key: "after", fmt: "dec" }, { header: "Người làm", key: "by" }],
+            rows: s.materialTxns.slice().sort((a, b) => b.at.getTime() - a.at.getTime()).map(t => { const m = byId(s.materials, t.material); return { at: t.at, code: m?.code, name: m?.name, type: t.type === "in" ? "Nhập" : t.type === "adjust" ? "Hoàn kho" : "Xuất", qty: t.type === "out" ? -t.qty : t.qty, price: t.type === "in" ? t.price : "", money: t.type === "in" ? t.qty * (t.price ?? 0) : "", ref: t.type === "in" ? t.supplier : t.order, reason: t.reason, after: t.stockAfter, by: t.by }; }) },
+        ]} />
+      </div>
       {can("material.import") && <ImportTable />}
 
       <Panel

@@ -8,6 +8,7 @@ import { useDraft } from "@/lib/use-draft";
 import { nf, vnd, ymVN } from "@/lib/format";
 import { finishedStock } from "@/lib/selectors";
 import { cn } from "@/lib/utils";
+import { ExportButton } from "@/components/xf/export-button";
 import { EmptyState, PageHeader, Panel, StatCard, TableWrap } from "@/components/xf/basics";
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -145,6 +146,17 @@ export default function StatsPage() {
               <option value={0}>Cả năm</option>
               {MONTHS.map(m => <option key={m} value={m}>Tháng {m}</option>)}
             </select>
+            <ExportButton name={`thong-ke-${year}${month ? `-thang-${month}` : ""}`} build={() => [
+              { name: `Theo tháng ${year}`,
+                columns: [{ header: "Tháng", key: "m" }, { header: "Lần nhập", key: "n", fmt: "int" }, { header: "Tiền nhập phụ liệu", key: "money", fmt: "money", width: 22 }],
+                rows: MONTHS.map(m => ({ m: `Tháng ${m}`, n: countByMonth[m - 1], money: byMonth[m - 1] })) },
+              { name: "Phụ liệu", note: `Kỳ: ${periodLabel}`,
+                columns: [{ header: "Mã", key: "code" }, { header: "Phụ liệu", key: "name", width: 26 }, { header: "Loại", key: "cat" }, { header: "Lần nhập", key: "times", fmt: "int" }, { header: "SL nhập", key: "qty", fmt: "dec" }, { header: "ĐVT", key: "unit" }, { header: "Tiền nhập", key: "money", fmt: "money" }, { header: "Tồn hiện tại", key: "stock", fmt: "dec" }, { header: "Giá trị tồn", key: "value", fmt: "money" }],
+                rows: matRows.map(r => ({ code: r.m.code, name: r.m.name, cat: MATERIAL_CATEGORIES[r.m.category], times: r.times, qty: r.qty, unit: r.m.unit, money: r.money, stock: r.m.stock, value: r.m.stock * r.m.avgPrice })) },
+              { name: "Sản phẩm", note: `Kỳ: ${periodLabel}`,
+                columns: [{ header: "SKU", key: "sku" }, { header: "Sản phẩm", key: "name", width: 28 }, { header: "Nhập kho trong kỳ", key: "inQty", fmt: "int" }, { header: "Đang có", key: "stock", fmt: "int" }, { header: "Giá vốn", key: "cost", fmt: "money" }, { header: "Giá trị tồn", key: "value", fmt: "money" }],
+                rows: prodRows.map(r => ({ sku: r.p.sku, name: r.p.name, inQty: r.inQty, stock: r.stock, cost: r.cost, value: r.stock * r.cost })) },
+            ]} />
           </div>
         }
       />

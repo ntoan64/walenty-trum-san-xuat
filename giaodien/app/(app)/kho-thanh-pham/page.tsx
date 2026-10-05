@@ -8,6 +8,7 @@ import { useDraft } from "@/lib/use-draft";
 import { useStore } from "@/lib/store";
 import { fmtDT, nf, vnd } from "@/lib/format";
 import { finishedStock } from "@/lib/selectors";
+import { ExportButton } from "@/components/xf/export-button";
 import { PageHeader, Panel, StatCard, StatusPill, TableWrap } from "@/components/xf/basics";
 
 export default function FinishedPage() {
@@ -35,7 +36,17 @@ export default function FinishedPage() {
           </div>
         }
       />
-      <SearchBox value={search} onChange={setSearch} placeholder="Tìm SKU, tên sản phẩm, mã lệnh…" label="Tìm thành phẩm" className="sm:w-80" />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <SearchBox value={search} onChange={setSearch} placeholder="Tìm SKU, tên sản phẩm, mã lệnh…" label="Tìm thành phẩm" className="sm:w-80" />
+        <ExportButton name="kho-thanh-pham" build={() => [
+          { name: "Tồn thành phẩm",
+            columns: [{ header: "SKU", key: "sku" }, { header: "Sản phẩm", key: "name", width: 28 }, { header: "Size & SKU", key: "variants", width: 30 }, { header: "Tồn", key: "q", fmt: "int" }, { header: "Giá vốn hiện tại", key: "c", fmt: "money" }, { header: "Giá trị tồn", key: "v", fmt: "money" }],
+            rows: allRows.map(r => ({ sku: r.p.sku, name: r.p.name, variants: r.p.variants?.map(v => `${v.size}:${v.sku}`).join(" "), q: r.q, c: r.c, v: r.q * r.c })) },
+          { name: "Lịch sử nhập",
+            columns: [{ header: "Ngày giờ", key: "at", fmt: "datetime", width: 18 }, { header: "SKU", key: "sku" }, { header: "Sản phẩm", key: "name", width: 28 }, { header: "Lệnh", key: "order" }, { header: "Số lượng", key: "qty", fmt: "int" }, { header: "Nguồn", key: "src", width: 22 }, { header: "Người làm", key: "by" }],
+            rows: s.finishedTxns.slice().sort((a, b) => b.at.getTime() - a.at.getTime()).map(h => { const p = byId(s.products, h.product); return { at: h.at, sku: p?.sku, name: p?.name, order: h.order, qty: h.qty, src: h.note ?? (h.repair ? `Sau sửa ${h.repair}` : "QC đợt nhận"), by: h.by }; }) },
+        ]} />
+      </div>
       <Panel title="Tồn theo sản phẩm" icon={PackageCheck} flush>
         <TableWrap>
           <table className="wl-table">

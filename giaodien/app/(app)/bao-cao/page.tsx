@@ -1,6 +1,6 @@
 "use client";
 
-import { Factory, FileSpreadsheet, Layers, Send, Wrench } from "lucide-react";
+import { Factory, Layers, Send, Wrench } from "lucide-react";
 import { aggregate, inRange, isRepairLate } from "@core";
 import { Button } from "@/components/ui/button";
 import { useStore, A } from "@/lib/store";
@@ -11,6 +11,8 @@ import { lowMaterials, openRepairs } from "@/lib/selectors";
 import { periodStart, reportText, type Period } from "@/lib/report-text";
 import { AlertRow, EmptyState, PageHeader, Panel, StatCard, TableWrap } from "@/components/xf/basics";
 import { useDraft } from "@/lib/use-draft";
+import { ExportButton } from "@/components/xf/export-button";
+import { byId } from "@core";
 import { cn } from "@/lib/utils";
 
 export default function ReportsPage() {
@@ -48,9 +50,26 @@ export default function ReportsPage() {
                 <Send /> Gửi vào Telegram
               </Button>
             )}
-            <Button variant="secondary" disabled title="Có ở bản nối dữ liệu thật">
-              <FileSpreadsheet /> Xuất Excel
-            </Button>
+            <ExportButton name={`bao-cao-${period === "day" ? "hom-nay" : "7-ngay"}`} build={() => {
+              const STEP: Record<string, string> = { cut: "Chờ cắt", sew: "Đang may", qc: "QC", done: "Hoàn thành" };
+              return [
+                { name: "Tổng hợp", note: `Kỳ: ${period === "day" ? `hôm nay ${fmtD(now)}` : `${fmtD(st)} – ${fmtD(now)}`}`,
+                  columns: [{ header: "Chỉ số", key: "k", width: 26 }, { header: "Số lượng", key: "v", fmt: "int" }],
+                  rows: [["Gửi may", a.issue], ["Nhận về", a.receive], ["QC pass", a.pass], ["QC fail", a.fail], ["Trả về xưởng sửa", a.sua], ["Xưởng trả lại", a.back], ["Hao hụt", a.loss]].map(([k, v]) => ({ k, v })) },
+                { name: "Theo xưởng",
+                  columns: [{ header: "Xưởng", key: "ws", width: 24 }, { header: "Gửi may", key: "issue", fmt: "int" }, { header: "Nhận về", key: "receive", fmt: "int" }, { header: "Pass", key: "pass", fmt: "int" }, { header: "Fail", key: "fail", fmt: "int" }, { header: "Trả sửa", key: "sua", fmt: "int" }, { header: "Hao hụt", key: "loss", fmt: "int" }, { header: "Pass lần đầu", key: "fpy", fmt: "pct" }],
+                  rows: s.workshops.map(w => { const x = aggregate(evs.filter(e => e.workshop === w.id)); return { ws: w.name, ...x, fpy: x.fpy ?? "" }; }) },
+                { name: "Lệnh sản xuất",
+                  columns: [{ header: "Mã lệnh", key: "code" }, { header: "SKU", key: "sku" }, { header: "Sản phẩm", key: "name", width: 28 }, { header: "Xưởng", key: "ws", width: 20 }, { header: "Theo size", key: "sizes", width: 22 }, { header: "Số lượng", key: "qty", fmt: "int" }, { header: "Bước", key: "step" }, { header: "Ngày tạo", key: "created", fmt: "date" }, { header: "Dự kiến xong", key: "due", fmt: "date" }, { header: "Hao hụt", key: "loss", fmt: "int" }],
+                  rows: s.orders.map(o => { const p = byId(s.products, o.product); return { code: o.code, sku: p?.sku, name: p?.name, ws: wsName(s, o.workshop), sizes: o.sizes?.map(z => `${z.size}:${z.qty}`).join(" "), qty: o.qty, step: o.cancelled ? "Đã hủy" : STEP[o.step], created: o.createdAt, due: o.dueAt, loss: o.loss }; }) },
+                { name: "Phiếu sửa đang mở",
+                  columns: [{ header: "Phiếu", key: "code" }, { header: "Lệnh", key: "order" }, { header: "Xưởng", key: "ws", width: 20 }, { header: "SL", key: "qty", fmt: "int" }, { header: "Lỗi", key: "defect", width: 36 }, { header: "Gửi", key: "sent", fmt: "date" }, { header: "Hạn", key: "due", fmt: "date" }],
+                  rows: open.map(r => ({ code: r.code, order: byId(s.orders, r.order)?.code, ws: wsName(s, r.workshop), qty: r.qty, defect: r.items?.length ? r.items.map(i => `${i.size} ${i.defect} ×${i.qty}`).join("; ") : r.defect, sent: r.sentAt, due: r.dueAt })) },
+                { name: "Phụ liệu sắp hết",
+                  columns: [{ header: "Mã", key: "code" }, { header: "Tên", key: "name", width: 26 }, { header: "Tồn", key: "stock", fmt: "dec" }, { header: "ĐVT", key: "unit" }, { header: "Báo hết dưới", key: "min", fmt: "dec" }],
+                  rows: low.map(m => ({ code: m.code, name: m.name, stock: m.stock, unit: m.unit, min: m.minStock })) },
+              ];
+            }} />
           </div>
         }
       />
