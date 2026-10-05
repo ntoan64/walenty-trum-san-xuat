@@ -44,6 +44,6 @@ cd chucnang && npm run test:full   # test toàn bộ luồng trên MongoDB, data
 3. **Root Directory**: `giaodien` (Framework: Next.js; để mặc định Build/Install command). Bật **Include files outside the root directory** nếu Vercel hỏi.
 4. **Environment Variables**: `MONGODB_URI` (copy từ `chucnang/.env`), tùy chọn `ADMIN_PASSWORD`.
 5. MongoDB Atlas → **Network Access** → thêm `0.0.0.0/0` (Vercel không có IP cố định).
-6. Deploy. Vùng chạy đã đặt `sin1` (Singapore) trong `giaodien/vercel.json`, gần cụm Atlas.
+6. Deploy. Vùng chạy đặt `hkg1` (Hong Kong) trong `giaodien/vercel.json`, cùng vùng với cụm Atlas (AWS ap-east-1).
 
 Lưu ý: giới hạn chống spam đang lưu trong bộ nhớ từng máy chủ; trên Vercel mỗi máy đếm riêng (vẫn chặn được spam thông thường).
