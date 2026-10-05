@@ -41,10 +41,21 @@ async function ensureIndexes() {
   indexesReady = true;
 }
 
+// Bộ nhớ đệm theo version: chỉ đọc lại toàn bộ khi có người vừa ghi (meta.version đổi).
+// Mỗi máy chủ giữ bản riêng; so version mỗi lần nên luôn đúng dữ liệu mới nhất.
+let cache: { version: number; state: DataState } | null = null;
+
+export async function currentVersion() {
+  const db = await getDb();
+  const meta = await db.collection<Meta>("meta").findOne({ _id: "meta" }, { projection: { version: 1 } });
+  return meta?.version ?? 0;
+}
+
 async function readAll(): Promise<{ state: DataState; version: number } | null> {
   const db = await getDb();
   const meta = await db.collection<Meta>("meta").findOne({ _id: "meta" });
   if (!meta) return null;
+  if (cache && cache.version === meta.version) return cache;
   const parts = await Promise.all(KEYS.map(k => k === "notifications"
     ? db.collection(COLLECTIONS[k]).find().sort({ sentAt: -1 }).limit(RETENTION.notificationsLoaded).toArray()
     : db.collection(COLLECTIONS[k]).find().toArray()));
@@ -53,7 +64,8 @@ async function readAll(): Promise<{ state: DataState; version: number } | null> 
     // _id trong Mongo chính là id của bản ghi
     (state as unknown as Record<string, unknown[]>)[k] = parts[i].map(({ _id, ...rest }) => ({ ...rest, id: _id }));
   });
-  return { state, version: meta.version };
+  cache = { state, version: meta.version };
+  return cache;
 }
 
 // Database trống → tạo 3 người dùng + 2 xưởng. Mật khẩu admin ban đầu lấy từ ADMIN_PASSWORD (nếu có)
@@ -125,6 +137,7 @@ export async function runAction(user: User, name: string, args: unknown[]): Prom
     );
     if (claimed.matchedCount === 0) continue;
     await writeDiff(state, draft);
+    cache = { state: draft, version: version + 1 };
     const ref = res.id ?? (typeof args[0] === "string" && /^(LSX|R)-/.test(args[0]) ? args[0] : undefined);
     await audit({ userId: user.id, userName: user.name, action: name, label, detail: res.msg, ref });
     return res;

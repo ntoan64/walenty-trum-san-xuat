@@ -20,8 +20,8 @@ async function handle(req: Request) {
     return Response.json({ result: { ok: false, error: "Thao tác này vừa được gửi, đợi vài giây" } });
   }
   const result = await runAction(me, name, args);
-  const { state } = await loadState();
-  return Response.json({ result, state: toClient(state) });
+  const { state, version } = await loadState(); // vừa ghi xong nên lấy từ bộ nhớ đệm, không đọc lại database
+  return Response.json({ result, version, state: toClient(state) });
 }
 
 export async function POST(req: Request) {

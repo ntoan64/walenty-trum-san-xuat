@@ -17,8 +17,8 @@ async function handle(req: Request, ctx: RouteContext<"/api/users/[id]/password"
   const pwErr = validatePassword(pw);
   if (pwErr) return bad(pwErr);
   const result = await runAction(me, "setPassword", [{ userId: id, passwordHash: await hashPassword(pw) }]);
-  const { state } = await loadState();
-  return Response.json({ result, state: toClient(state) });
+  const { state, version } = await loadState();
+  return Response.json({ result, version, state: toClient(state) });
 }
 
 export async function POST(req: Request, ctx: RouteContext<"/api/users/[id]/password">) {

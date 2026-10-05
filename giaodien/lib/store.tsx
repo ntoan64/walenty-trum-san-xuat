@@ -12,6 +12,7 @@ type Snap = { data: DataState; meId: string };
 
 /* ---------- dữ liệu lấy từ server (MongoDB), tự làm mới để điện thoại / máy tính thấy giống nhau ---------- */
 let snap: Snap | null = null;
+let version = 0; // version dữ liệu đang có, gửi kèm để server chỉ trả khi có thay đổi
 let pending = 0; // số thao tác đang gửi, lúc đó tạm dừng làm mới
 let started = false;
 const listeners = new Set<() => void>();
@@ -30,13 +31,14 @@ function toLogin() {
   if (!location.pathname.startsWith("/login")) location.replace("/login");
 }
 
-async function fetchState() {
+async function fetchState(force = false) {
   try {
-    const r = await fetch("/api/state", { cache: "no-store" });
+    const r = await fetch(`/api/state${version && snap && !force ? `?v=${version}` : ""}`, { cache: "no-store" });
     if (r.status === 401) return toLogin();
     if (!r.ok) return;
-    const j = JSON.parse(await r.text(), revive) as { state: DataState; meId: string };
-    if (pending === 0) emit({ data: j.state, meId: j.meId });
+    const j = JSON.parse(await r.text(), revive) as { same?: boolean; state?: DataState; meId: string; version?: number };
+    if (j.same || !j.state) return; // chưa có gì mới
+    if (pending === 0) { version = j.version ?? 0; emit({ data: j.state, meId: j.meId }); }
   } catch {
     // mất mạng: giữ dữ liệu cũ, lần sau thử lại
   }
@@ -65,8 +67,8 @@ async function post(url: string, body: unknown): Promise<Result> {
   try {
     const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     if (r.status === 401) { toLogin(); return { ok: false, error: "Phiên đăng nhập đã hết, đăng nhập lại" }; }
-    const j = JSON.parse(await r.text(), revive) as { result?: Result; state?: DataState; error?: string };
-    if (j.state && snap) snap = { ...snap, data: j.state };
+    const j = JSON.parse(await r.text(), revive) as { result?: Result; state?: DataState; error?: string; version?: number };
+    if (j.state && snap) { snap = { ...snap, data: j.state }; version = j.version ?? 0; }
     return j.result ?? (r.ok ? { ok: true, msg: "Xong" } : { ok: false, error: j.error ?? "Có lỗi, thử lại" });
   } catch {
     return { ok: false, error: "Mất kết nối máy chủ, kiểm tra mạng rồi thử lại" };
@@ -76,10 +78,23 @@ async function post(url: string, body: unknown): Promise<Result> {
   }
 }
 
-async function run<Args extends unknown[]>(_perm: Action | null, fn: Fn<Args>, ...args: Args): Promise<Result> {
+async function run<Args extends unknown[]>(perm: Action | null, fn: Fn<Args>, ...args: Args): Promise<Result> {
   const name = A.actionName(fn);
   if (!name) return { ok: false, error: "Thao tác không hỗ trợ" };
-  return post("/api/action", { name, args });
+  // Phản hồi tức thì: chạy thử ngay trên trình duyệt và hiện kết quả trước, server xác nhận sau
+  const before = snap;
+  if (snap) {
+    const me = meOf(snap);
+    if (me && (!perm || can(me.role, perm))) {
+      const draft = structuredClone(snap.data);
+      const local = fn({ s: draft, me: me.name, meId: me.id, now: new Date() }, ...args);
+      if (local.ok) emit({ ...snap, data: draft });
+    }
+  }
+  const res = await post("/api/action", { name, args });
+  // Server từ chối (hoặc mất mạng) → quay lại dữ liệu trước đó rồi tải lại cho chắc
+  if (!res.ok && before) { emit(before); fetchState(true); }
+  return res;
 }
 
 // Chạy thử trên bản sao ở trình duyệt để báo lỗi ngay (server vẫn kiểm tra lại)
@@ -121,7 +136,7 @@ export function StoreProvider({ children, fallback }: { children: React.ReactNod
     if (!cur || !meUser) return null;
     return {
       data: cur.data, meUser, role: meUser.role, me: meUser.name ?? ROLE_LABEL[meUser.role],
-      can: (a: Action) => can(meUser.role, a), run, check, post, refresh: fetchState, logout,
+      can: (a: Action) => can(meUser.role, a), run, check, post, refresh: () => fetchState(true), logout,
     };
   }, [cur]);
 

@@ -18,6 +18,7 @@ async function handle(req: Request) {
   if (err) return bad(err);
   const db = await getDb();
   await db.collection<{ _id: string }>("users").updateOne({ _id: me.id }, { $set: { passwordHash: await hashPassword(next) } });
+  await db.collection<{ _id: string; version: number }>("meta").updateOne({ _id: "meta" }, { $inc: { version: 1 } });
   await audit({ userId: me.id, userName: me.name, action: "changePassword", label: "Đổi mật khẩu", detail: "Tự đổi mật khẩu" });
   return Response.json({ ok: true });
 }

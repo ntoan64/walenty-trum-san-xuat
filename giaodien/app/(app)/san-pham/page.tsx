@@ -1,18 +1,22 @@
 "use client";
 
-import { Info, Plus, Trash2 } from "lucide-react";
-import { byId, materialCost, PRODUCT_STATUS, sum, type BomLine, type ItemStatus } from "@core";
+import { Fragment, useState } from "react";
+import { ChevronRight, Info, Plus, Shirt, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { byId, isLive, materialCost, PRODUCT_STATUS, sum, type BomLine, type ItemStatus, type Product } from "@core";
 import { Button } from "@/components/ui/button";
 import { matches } from "@/lib/search";
 import { SearchBox } from "@/components/xf/search-box";
 import { useStore, A } from "@/lib/store";
 import { useConfirmAction } from "@/lib/use-action";
-import { nf, vnd } from "@/lib/format";
+import { fmtD, nf, vnd } from "@/lib/format";
 import { Summary } from "@/components/xf/confirm-provider";
 import { Collapsible } from "@/components/xf/collapsible";
 import { StatusSelect } from "@/components/xf/status-select";
 import { useDraft } from "@/lib/use-draft";
-import { CalcHint, EmptyState, Field, NumberField, PageHeader, Panel, TableWrap } from "@/components/xf/basics";
+import { CalcHint, EmptyState, Field, NumberField, PageHeader, Panel, StatCard, TableWrap } from "@/components/xf/basics";
+import { finishedStock } from "@/lib/selectors";
+import { cn } from "@/lib/utils";
 
 /* ---------- Thêm sản phẩm: SKU, tên, tiền công, định mức phụ liệu ---------- */
 function CreateProduct() {
@@ -94,28 +98,147 @@ function CreateProduct() {
   );
 }
 
+/* ---------- Chi tiết 1 sản phẩm khi bấm vào dòng ---------- */
+function ProductDetail({ p, mat, stock }: { p: Product; mat: number; stock: number }) {
+  const { data: s, can } = useStore();
+  const total = mat + p.laborCost;
+  const matPct = total ? (mat / total) * 100 : 0;
+  const orders = s.orders.filter(o => o.product === p.id).slice().sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  const live = orders.filter(isLive);
+  const STEP: Record<string, string> = { cut: "Chờ cắt", sew: "Đang may", qc: "QC", done: "Hoàn thành" };
+  return (
+    <div className="reveal grid grid-cols-1 gap-4 rounded-xl border border-line bg-surface p-4 shadow-[0_4px_16px_rgba(31,27,26,0.05)] lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      {/* Định mức */}
+      <div className="min-w-0">
+        <div className="mb-2 flex items-baseline justify-between gap-2">
+          <h3 className="font-serif text-[15px] font-semibold text-brand">Định mức cho 1 sản phẩm</h3>
+          <span className="text-xs text-muted-foreground">{p.bom.length} phụ liệu</span>
+        </div>
+        <div className="overflow-hidden rounded-lg border border-line">
+          <table className="w-full text-[13px]">
+            <thead className="bg-surface-low text-left text-[11px] tracking-[0.06em] text-muted-foreground uppercase">
+              <tr><th className="px-3 py-2">Phụ liệu</th><th className="px-3 py-2 text-right">Định mức</th><th className="px-3 py-2 text-right">Giá BQ</th><th className="px-3 py-2 text-right">Thành tiền</th></tr>
+            </thead>
+            <tbody>
+              {p.bom.map(l => {
+                const m = byId(s.materials, l.material)!;
+                return (
+                  <tr key={l.material} className="border-t border-line">
+                    <td className="px-3 py-2">
+                      <span className="num mr-1.5 text-xs font-bold text-brown">{m.code}</span>{m.name}
+                      {m.status !== "active" && <span className="ml-1 text-xs text-warn">({m.status === "paused" ? "tạm ngưng" : "ngừng dùng"})</span>}
+                      <div className="text-[11.5px] text-subtle">Tồn kho {nf(m.stock, 1)} {m.unit} · đủ làm ~{l.qtyPerUnit ? nf(Math.floor(m.stock / l.qtyPerUnit)) : "—"} cái</div>
+                    </td>
+                    <td className="num px-3 py-2 text-right whitespace-nowrap">{nf(l.qtyPerUnit, 2)} {m.unit}</td>
+                    <td className="num px-3 py-2 text-right text-muted-foreground">{vnd(m.avgPrice)}</td>
+                    <td className="num px-3 py-2 text-right">{vnd(l.qtyPerUnit * m.avgPrice)}</td>
+                  </tr>
+                );
+              })}
+              <tr className="border-t border-line">
+                <td className="px-3 py-2">Tiền công may</td><td className="px-3 py-2 text-right text-muted-foreground">gia công</td><td />
+                <td className="num px-3 py-2 text-right">{vnd(p.laborCost)}</td>
+              </tr>
+              <tr className="border-t border-line bg-surface-low font-semibold">
+                <td colSpan={3} className="px-3 py-2 font-serif text-brand">Giá vốn / cái</td>
+                <td className="num px-3 py-2 text-right text-brand">{vnd(total)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Tóm tắt */}
+      <div className="flex min-w-0 flex-col gap-3">
+        <div className="rounded-lg bg-surface-low p-3">
+          <div className="eyebrow mb-1.5">Cơ cấu giá vốn</div>
+          <div className="flex h-2.5 overflow-hidden rounded-full bg-surface-3" role="img" aria-label={`Phụ liệu ${Math.round(matPct)}%, tiền công ${100 - Math.round(matPct)}%`}>
+            <i className="block h-full bg-brand" style={{ width: `${matPct}%` }} />
+            <i className="block h-full bg-brown/70" style={{ width: `${100 - matPct}%` }} />
+          </div>
+          <div className="mt-1.5 flex justify-between text-[12px]">
+            <span><span className="mr-1 inline-block size-2 rounded-full bg-brand" />Phụ liệu <b className="num">{vnd(mat)}</b> <span className="text-subtle">({Math.round(matPct)}%)</span></span>
+            <span><span className="mr-1 inline-block size-2 rounded-full bg-brown/70" />Tiền công <b className="num">{vnd(p.laborCost)}</b></span>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-lg bg-surface-low p-3">
+            <div className="eyebrow">Thành phẩm đang có</div>
+            <div className="font-serif text-xl font-bold text-ok">{nf(stock)} <span className="font-sans text-xs font-normal text-muted-foreground">cái</span></div>
+            <div className="text-[11.5px] text-subtle">≈ {vnd(stock * total)}</div>
+          </div>
+          <div className="rounded-lg bg-surface-low p-3">
+            <div className="eyebrow">Lệnh đang chạy</div>
+            <div className="font-serif text-xl font-bold text-brand">{live.length} <span className="font-sans text-xs font-normal text-muted-foreground">lệnh</span></div>
+            <div className="text-[11.5px] text-subtle">{nf(live.reduce((t, o) => t + o.qty, 0))} cái đang làm</div>
+          </div>
+        </div>
+        <div>
+          <div className="eyebrow mb-1">Lệnh gần đây</div>
+          {orders.length ? (
+            <ul className="flex flex-col gap-1">
+              {orders.slice(0, 4).map(o => (
+                <li key={o.id}>
+                  <Link href={`/lenh-san-xuat/${o.id}`} className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-[13px] hover:bg-surface-2">
+                    <span><b className="num text-brand">{o.code}</b> · <span className="num">{o.qty}</span> cái</span>
+                    <span className={cn("text-xs", o.cancelled ? "text-bad" : "text-muted-foreground")}>{o.cancelled ? "Đã hủy" : STEP[o.step]} · {fmtD(o.createdAt)}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="text-[13px] text-muted-foreground">Chưa có lệnh nào.</p>}
+        </div>
+        {can("order.create") && p.status === "active" && (
+          <Link href="/lenh-san-xuat" className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-[13px] font-semibold text-brand-fg hover:bg-brand-strong">
+            <Plus className="size-4" /> Tạo lệnh sản xuất
+          </Link>
+        )}
+      </div>
+    </div>
+  );
+}
+
+type SortKey = "new" | "name" | "sku" | "cost";
+const PAGE = 20;
+
 export default function ProductsPage() {
   const { data: s, can } = useStore();
   const act = useConfirmAction();
   const manage = can("product.manage");
   const [q, setQ] = useDraft("products:q", "");
-  const products = s.products.filter(p => matches(q, p.sku, p.name, p.bom.map(l => s.materials.find(m => m.id === l.material)?.name).join(" ")));
+  const [status, setStatus] = useDraft<"all" | ItemStatus>("products:status", "all");
+  const [sort, setSort] = useDraft<SortKey>("products:sort", "new");
+  const [limit, setLimit] = useState(PAGE);
+  const [open, setOpen] = useState<string | null>(null);
+  const stock = finishedStock(s);
 
-  const changeStatus = (id: string, status: ItemStatus) => {
+  const rows = s.products
+    .map((p, i) => ({ p, i, mat: materialCost(p, s.materials), stock: stock[p.id] ?? 0 }))
+    .filter(r => status === "all" || r.p.status === status)
+    .filter(r => matches(q, r.p.sku, r.p.name, r.p.bom.map(l => s.materials.find(m => m.id === l.material)?.name).join(" ")))
+    .sort((a, b) =>
+      sort === "name" ? a.p.name.localeCompare(b.p.name, "vi")
+      : sort === "sku" ? a.p.sku.localeCompare(b.p.sku, "vi", { numeric: true })
+      : sort === "cost" ? (b.mat + b.p.laborCost) - (a.mat + a.p.laborCost)
+      : b.i - a.i); // mới thêm lên đầu
+  const shown = rows.slice(0, limit);
+  const count = (k: "all" | ItemStatus) => s.products.filter(p => k === "all" || p.status === k).length;
+
+  const changeStatus = (id: string, next: ItemStatus) => {
     const p = byId(s.products, id)!;
     act(
       {
         title: `Đổi tình trạng ${p.sku}?`, confirmLabel: "Đổi tình trạng",
         description: (
           <>
-            <Summary rows={[["Sản phẩm", `${p.sku} · ${p.name}`], ["Từ", PRODUCT_STATUS[p.status]], ["Sang", PRODUCT_STATUS[status]]]} />
+            <Summary rows={[["Sản phẩm", `${p.sku} · ${p.name}`], ["Từ", PRODUCT_STATUS[p.status]], ["Sang", PRODUCT_STATUS[next]]]} />
             <p className="mt-2 text-xs">
-              {status === "active" ? "Tạo lệnh sản xuất lại được." : "Không tạo lệnh mới cho sản phẩm này. Lệnh đang chạy vẫn tiếp tục."}
+              {next === "active" ? "Tạo lệnh sản xuất lại được." : "Không tạo lệnh mới cho sản phẩm này. Lệnh đang chạy vẫn tiếp tục."}
             </p>
           </>
         ),
       },
-      "product.manage", A.setProductStatus, id, status,
+      "product.manage", A.setProductStatus, id, next,
     );
   };
 
@@ -124,50 +247,105 @@ export default function ProductsPage() {
       <PageHeader
         eyebrow={<>Phân hệ kho <span className="text-subtle">/</span> <span className="text-subtle">Sản phẩm</span></>}
         title="Sản phẩm & giá vốn"
-        desc="Giá vốn = phụ liệu theo định mức × giá bình quân + tiền công may."
+        desc="Giá vốn = phụ liệu theo định mức × giá bình quân + tiền công may. Bấm vào một dòng để xem định mức."
+        aside={
+          <div className="grid w-full grid-cols-3 gap-2 min-[1500px]:w-auto">
+            <StatCard className="min-[1500px]:min-w-[110px]" label="Sản phẩm" value={s.products.length} unit="mã" tone="brand" />
+            <StatCard className="min-[1500px]:min-w-[110px]" label="Đang sản xuất" value={count("active")} unit="mã" tone="ok" />
+            <StatCard className="min-[1500px]:min-w-[110px]" label="Tạm / ngừng" value={count("paused") + count("discontinued")} unit="mã" />
+          </div>
+        }
       />
       {manage && <CreateProduct />}
-      <SearchBox value={q} onChange={setQ} placeholder="Tìm SKU, tên sản phẩm, phụ liệu…" label="Tìm sản phẩm" className="sm:w-80" />
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-5">
-        {!products.length && <div className="col-span-full"><EmptyState>{s.products.length ? "Không tìm thấy sản phẩm." : "Chưa có sản phẩm nào."}</EmptyState></div>}
-        {products.map(p => {
-          const mat = materialCost(p, s.materials);
-          return (
-            <Panel
-              key={p.id} flush
-              className={p.status === "discontinued" ? "opacity-70" : ""}
-              title={<span className="flex flex-col"><span className="num text-[11.5px] font-bold text-brown">{p.sku}</span>{p.name}</span>}
-              actions={<StatusSelect id={`ps-${p.id}`} value={p.status} labels={PRODUCT_STATUS} editable={manage} onChange={v => changeStatus(p.id, v)} />}
-            >
-              <TableWrap>
-                <table className="wl-table !min-w-0">
-                  <thead><tr><th>Phụ liệu</th><th className="r">Định mức</th><th className="r">Thành tiền</th></tr></thead>
-                  <tbody>
-                    {p.bom.map(l => {
-                      const m = byId(s.materials, l.material)!;
-                      return (
-                        <tr key={l.material}>
-                          <td>{m.name}{m.status !== "active" && <span className="ml-1 text-xs text-warn">({m.status === "paused" ? "tạm ngưng" : "ngừng dùng"})</span>}</td>
-                          <td className="r num">{nf(l.qtyPerUnit, 2)} {m.unit}</td>
-                          <td className="r num">{vnd(l.qtyPerUnit * m.avgPrice)}</td>
-                        </tr>
-                      );
-                    })}
-                    <tr><td>Tiền công may</td><td className="r text-muted-foreground">gia công</td><td className="r num">{vnd(p.laborCost)}</td></tr>
-                  </tbody>
-                  <tfoot><tr><td colSpan={2} className="font-serif text-brand">Giá vốn / cái</td><td className="r num text-brand">{vnd(mat + p.laborCost)}</td></tr></tfoot>
-                </table>
-              </TableWrap>
-            </Panel>
-          );
-        })}
-      </div>
-      <Panel>
-        <p className="flex items-start gap-2 text-[13px] text-muted-foreground">
-          <Info className="mt-0.5 size-4 shrink-0 text-brown" />
-          Khi tạo lệnh, giá vốn được chốt vào lệnh. Nhập phụ liệu giá mới chỉ ảnh hưởng các lệnh tạo sau đó. Sản phẩm tạm ngưng hoặc ngừng sản xuất không tạo lệnh mới được.
-        </p>
+
+      <Panel
+        title="Danh sách sản phẩm" icon={Shirt} flush
+        tag={<span className="num text-xs text-subtle">{rows.length} / {s.products.length}</span>}
+        actions={<SearchBox value={q} onChange={v => { setQ(v); setLimit(PAGE); }} placeholder="Tìm SKU, tên, phụ liệu…" label="Tìm sản phẩm" />}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3 pb-2 md:px-5">
+          <div role="group" aria-label="Lọc tình trạng" className="flex gap-1 overflow-x-auto">
+            {([["all", "Tất cả"], ...Object.entries(PRODUCT_STATUS)] as ["all" | ItemStatus, string][]).map(([k, label]) => (
+              <button key={k} type="button" aria-pressed={status === k} onClick={() => { setStatus(k); setLimit(PAGE); }}
+                className={cn("rounded-md px-2.5 py-1 text-xs font-semibold whitespace-nowrap",
+                  status === k ? "bg-brand text-brand-fg" : "bg-surface-2 text-muted-foreground hover:bg-surface-3")}>
+                {label} <span className="num opacity-70">{count(k)}</span>
+              </button>
+            ))}
+          </div>
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            Sắp xếp
+            <select className="field-input !min-h-8 !w-36 !bg-surface !py-1 text-xs" value={sort} onChange={e => setSort(e.target.value as SortKey)}>
+              <option value="new">Mới thêm</option>
+              <option value="name">Tên A → Z</option>
+              <option value="sku">SKU</option>
+              <option value="cost">Giá vốn cao → thấp</option>
+            </select>
+          </label>
+        </div>
+
+        <TableWrap>
+          <table className="wl-table">
+            <thead>
+              <tr>
+                <th className="w-8" />
+                <th>SKU</th><th>Sản phẩm</th><th className="r">Phụ liệu</th><th className="r">Tiền công</th>
+                <th className="r">Giá vốn / cái</th><th className="r">Tồn TP</th><th>Tình trạng</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.length ? shown.map(({ p, mat, stock: st }) => {
+                const isOpen = open === p.id;
+                return (
+                  <Fragment key={p.id}>
+                    <tr
+                      className={cn("cursor-pointer", p.status === "discontinued" && "opacity-60", isOpen && "bg-brand-soft/30")}
+                      onClick={() => setOpen(isOpen ? null : p.id)}
+                    >
+                      <td>
+                        <button type="button" aria-expanded={isOpen} aria-label={`${isOpen ? "Thu gọn" : "Xem"} định mức ${p.sku}`}
+                          onClick={e => { e.stopPropagation(); setOpen(isOpen ? null : p.id); }}
+                          className="grid size-6 place-items-center rounded text-subtle hover:bg-surface-3">
+                          <ChevronRight className={cn("size-4 transition-transform duration-200", isOpen && "rotate-90")} />
+                        </button>
+                      </td>
+                      <td className="num font-bold whitespace-nowrap text-brand">{p.sku}</td>
+                      <td className="font-serif font-medium">{p.name}</td>
+                      <td className="r num">{p.bom.length}</td>
+                      <td className="r num">{vnd(p.laborCost)}</td>
+                      <td className="r num font-semibold text-brand">{vnd(mat + p.laborCost)}</td>
+                      <td className="r num">{nf(st)}</td>
+                      <td onClick={e => e.stopPropagation()}>
+                        <StatusSelect id={`ps-${p.id}`} value={p.status} labels={PRODUCT_STATUS} editable={manage} onChange={v => changeStatus(p.id, v)} />
+                      </td>
+                    </tr>
+                    {isOpen && (
+                      <tr className="hover:!bg-transparent">
+                        <td />
+                        <td colSpan={7} className="!pt-0">
+                          <ProductDetail p={p} mat={mat} stock={st} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              }) : (
+                <tr><td colSpan={8}><EmptyState>{s.products.length ? "Không tìm thấy sản phẩm phù hợp." : "Chưa có sản phẩm nào. Thêm ở khối bên trên."}</EmptyState></td></tr>
+              )}
+            </tbody>
+          </table>
+        </TableWrap>
+        {rows.length > limit && (
+          <div className="flex justify-center border-t border-line p-3">
+            <Button variant="secondary" size="sm" onClick={() => setLimit(limit + PAGE)}>Xem thêm {Math.min(PAGE, rows.length - limit)} sản phẩm</Button>
+          </div>
+        )}
       </Panel>
+
+      <p className="flex items-start gap-2 px-1 text-[12.5px] text-muted-foreground">
+        <Info className="mt-0.5 size-4 shrink-0 text-brown" />
+        Khi tạo lệnh, giá vốn được chốt vào lệnh. Nhập phụ liệu giá mới chỉ ảnh hưởng các lệnh tạo sau đó. Sản phẩm tạm ngưng hoặc ngừng sản xuất không tạo lệnh mới được.
+      </p>
     </>
   );
 }

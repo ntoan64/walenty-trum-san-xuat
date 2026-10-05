@@ -19,8 +19,8 @@ async function handle(req: Request) {
     role: ["quanly", "kho", "qc"].includes(b?.role) ? b.role : "qc", title: String(b?.title ?? ""),
     passwordHash: await hashPassword(String(b.password)),
   }]);
-  const { state } = await loadState();
-  return Response.json({ result, state: toClient(state) });
+  const { state, version } = await loadState();
+  return Response.json({ result, version, state: toClient(state) });
 }
 
 export async function POST(req: Request) {
