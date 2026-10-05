@@ -2,10 +2,10 @@ import { findUserForLogin, hashPassword, validatePassword, verifyPassword } from
 import { audit } from "@server/store";
 import { getDb } from "@server/db";
 import { bodyTooLarge, LIMIT, rateLimit } from "@server/guard";
-import { bad, currentUser, unauthorized } from "@/lib/session";
+import { bad, currentUser, unauthorized, serverError } from "@/lib/session";
 
 // Tự đổi mật khẩu của mình (phải nhập đúng mật khẩu hiện tại)
-export async function POST(req: Request) {
+async function handle(req: Request) {
   const me = await currentUser();
   if (!me) return unauthorized();
   if (bodyTooLarge(req)) return bad("Dữ liệu gửi lên quá lớn");
@@ -20,4 +20,12 @@ export async function POST(req: Request) {
   await db.collection<{ _id: string }>("users").updateOne({ _id: me.id }, { $set: { passwordHash: await hashPassword(next) } });
   await audit({ userId: me.id, userName: me.name, action: "changePassword", label: "Đổi mật khẩu", detail: "Tự đổi mật khẩu" });
   return Response.json({ ok: true });
+}
+
+export async function POST(req: Request) {
+  try {
+    return await handle(req);
+  } catch (e) {
+    return serverError(e);
+  }
 }

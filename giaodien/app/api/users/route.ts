@@ -2,10 +2,10 @@ import { can } from "@core/permissions";
 import { hashPassword, validatePassword } from "@server/auth";
 import { loadState, runAction, toClient } from "@server/store";
 import { bodyTooLarge, LIMIT, rateLimit } from "@server/guard";
-import { bad, currentUser, forbidden, unauthorized } from "@/lib/session";
+import { bad, currentUser, forbidden, unauthorized, serverError } from "@/lib/session";
 
 // Admin cấp tài khoản mới (mật khẩu được băm ở đây, không lưu bản gốc)
-export async function POST(req: Request) {
+async function handle(req: Request) {
   const me = await currentUser();
   if (!me) return unauthorized();
   if (bodyTooLarge(req)) return bad("Dữ liệu gửi lên quá lớn");
@@ -21,4 +21,12 @@ export async function POST(req: Request) {
   }]);
   const { state } = await loadState();
   return Response.json({ result, state: toClient(state) });
+}
+
+export async function POST(req: Request) {
+  try {
+    return await handle(req);
+  } catch (e) {
+    return serverError(e);
+  }
 }

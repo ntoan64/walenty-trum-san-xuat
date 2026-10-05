@@ -2,9 +2,9 @@ import { cookies } from "next/headers";
 import { createSession, findUserForLogin, SESSION_COOKIE, verifyPassword } from "@server/auth";
 import { clearLimit, clientIp, LIMIT, rateLimit, retryAfter } from "@server/guard";
 import { audit, loadState } from "@server/store";
-import { bad } from "@/lib/session";
+import { bad, serverError } from "@/lib/session";
 
-export async function POST(req: Request) {
+async function handle(req: Request) {
   const body = await req.json().catch(() => null);
   const login = String(body?.login ?? "").slice(0, 60), password = String(body?.password ?? "").slice(0, 100);
   if (!login || !password) return bad("Nhập tên đăng nhập và mật khẩu");
@@ -27,4 +27,12 @@ export async function POST(req: Request) {
   (await cookies()).set(SESSION_COOKIE, token, { httpOnly: true, sameSite: "lax", path: "/", expires: expiresAt });
   await audit({ userId: u.id, userName: u.name, action: "login", label: "Đăng nhập", detail: `Đăng nhập thành công (${clientIp(req)})` });
   return Response.json({ ok: true });
+}
+
+export async function POST(req: Request) {
+  try {
+    return await handle(req);
+  } catch (e) {
+    return serverError(e);
+  }
 }

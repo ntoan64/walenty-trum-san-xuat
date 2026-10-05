@@ -1,9 +1,9 @@
 import { bodyTooLarge, isDuplicate, LIMIT, rateLimit, retryAfter } from "@server/guard";
 import { loadState, runAction, toClient } from "@server/store";
-import { bad, currentUser, unauthorized } from "@/lib/session";
+import { bad, currentUser, unauthorized, serverError } from "@/lib/session";
 
 // Chạy 1 thao tác nghiệp vụ. Quyền kiểm tra ở server theo người đang đăng nhập.
-export async function POST(req: Request) {
+async function handle(req: Request) {
   const me = await currentUser();
   if (!me) return unauthorized();
   if (bodyTooLarge(req)) return Response.json({ error: "Dữ liệu gửi lên quá lớn" }, { status: 413 });
@@ -22,4 +22,12 @@ export async function POST(req: Request) {
   const result = await runAction(me, name, args);
   const { state } = await loadState();
   return Response.json({ result, state: toClient(state) });
+}
+
+export async function POST(req: Request) {
+  try {
+    return await handle(req);
+  } catch (e) {
+    return serverError(e);
+  }
 }
