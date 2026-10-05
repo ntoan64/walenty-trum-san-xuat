@@ -6,13 +6,14 @@ import { MongoClient, type Db } from "mongodb";
 function loadEnv() {
   if (process.env.MONGODB_URI) return;
   const candidates = [
-    path.resolve(process.cwd(), "../chucnang/.env"),
-    path.resolve(process.cwd(), "chucnang/.env"),
-    path.resolve(process.cwd(), ".env"),
+    // turbopackIgnore: chỉ dùng khi chạy local, không đưa file .env vào bản build
+    path.resolve(/*turbopackIgnore: true*/ process.cwd(), "../chucnang/.env"),
+    path.resolve(/*turbopackIgnore: true*/ process.cwd(), "chucnang/.env"),
+    path.resolve(/*turbopackIgnore: true*/ process.cwd(), ".env"),
   ];
   for (const f of candidates) {
-    if (fs.existsSync(f)) {
-      process.loadEnvFile(f);
+    if (fs.existsSync(/*turbopackIgnore: true*/ f)) {
+      process.loadEnvFile(/*turbopackIgnore: true*/ f);
       if (process.env.MONGODB_URI) return;
     }
   }

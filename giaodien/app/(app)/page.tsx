@@ -1,8 +1,10 @@
 "use client";
 
-import { AlertTriangle, ListChecks, Workflow } from "lucide-react";
+import { AlertTriangle, BellRing, ListChecks, Workflow } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useConfirmAction } from "@/lib/use-action";
 import { canView, isLive, sum, type Screen } from "@core";
-import { useStore } from "@/lib/store";
+import { useStore, A } from "@/lib/store";
 import { fmtD, fmtWeekday, nf } from "@/lib/format";
 import { prodOf, wsName } from "@/lib/actions";
 import { balanceOf, lateRepairs, lowMaterials, openRepairs, totalFinished } from "@/lib/selectors";
@@ -18,7 +20,8 @@ const FLOW = [
 ];
 
 export default function OverviewPage() {
-  const { data: s, role } = useStore();
+  const { data: s, role, can } = useStore();
+  const act = useConfirmAction();
   const now = new Date();
   const open = s.orders.filter(isLive);
   const bs = open.map(o => ({ o, b: balanceOf(s, o) }));
@@ -42,7 +45,17 @@ export default function OverviewPage() {
       <PageHeader
         eyebrow={<>Phân hệ điều phối <span className="text-subtle">/</span> <span className="text-subtle">Tổng quan</span></>}
         title="Tổng quan xưởng"
-        desc={<span className="first-letter:uppercase">{fmtWeekday(now)}</span>}
+        desc={
+          <span className="flex flex-wrap items-center gap-3">
+            <span className="first-letter:uppercase">{fmtWeekday(now)}</span>
+            {can("report.send") && (
+              <Button size="sm" variant="secondary" onClick={() => act(
+                { title: "Gửi nhắc việc ngay?", confirmLabel: "Gửi nhắc việc", description: "Mỗi người (QC, Phó kho, Quản lý kho) nhận danh sách việc cần làm theo vai trò, qua Telegram và Xưởng Bot. Hệ thống cũng tự nhắc lúc 8h sáng mỗi ngày." },
+                "report.send", A.sendReminders,
+              )}><BellRing /> Nhắc việc ngay</Button>
+            )}
+          </span>
+        }
         aside={
           <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4 min-[1500px]:w-auto">
             <StatCard className="min-[1500px]:min-w-[130px]" label="Hàng ở xưởng" value={atWs} unit="cái" sub="chưa trả + đang sửa" tone="brand" />

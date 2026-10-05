@@ -6,6 +6,7 @@ import {
   type BomLine, type DefectLine, type EventType, type SizeQty, type ItemStatus, type Material, type MaterialCategory, type ProductionOrder, type ProductVariant, type Role, type Action,
 } from "./index";
 import type { DataState } from "./state";
+import { buildReminders } from "./reminders";
 import { fmtD, nf, vnd } from "./format";
 
 /* ---------- ràng buộc chống nhập sai / phá kho ---------- */
@@ -650,6 +651,15 @@ export function requc(c: Ctx, id: string, q: { pass: number; again: number; hong
   return ok(`${r.code}: đã QC lại`);
 }
 
+/* ---------- nhắc việc theo vai trò ---------- */
+export function sendReminders(c: Ctx): Result {
+  const items = buildReminders(c.s, c.now);
+  if (!items.length) return fail("Không có việc gì cần nhắc");
+  for (const it of items) notify(c, it.roles, it.text);
+  return ok(`Đã gửi nhắc việc (${items.map(i => i.roles.map(r => ROLE_NAME[r]).join("")).join(", ")})`);
+}
+const ROLE_NAME: Record<Role, string> = { quanly: "Quản lý kho", kho: "Phó kho", qc: "QC" };
+
 /* ---------- báo cáo, nhân viên ---------- */
 export function sendReport(c: Ctx, text: string): Result {
   if (!text?.trim() || text.length > 3 * LIMITS.text) return fail("Nội dung báo cáo không hợp lệ");
@@ -737,6 +747,7 @@ export const ACTIONS: Record<string, [Action | null, (c: Ctx, ...args: any[]) =>
   repairStatus: ["repair.status", repairStatus, "Cập nhật phiếu sửa"],
   requc: ["repair.requc", requc, "QC lại phiếu sửa"],
   sendReport: ["report.send", sendReport, "Gửi báo cáo Telegram"],
+  sendReminders: ["report.send", sendReminders, "Gửi nhắc việc"],
   sendMessage: ["notify.send", sendMessage, "Gửi thông báo"],
   updateProfile: [null, updateProfile, "Sửa thông tin tài khoản"],
   toggleUser: ["user.manage", toggleUser, "Khóa / mở tài khoản"],

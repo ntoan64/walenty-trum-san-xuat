@@ -148,3 +148,23 @@ describe('admin sửa / hủy lệnh', () => {
     expect(A.editOrder(c, id, { dueDate: due }).ok).toBe(false)
   })
 })
+
+describe('nhắc việc', () => {
+  it('QC được nhắc hàng chờ QC; không có việc thì không gửi', async () => {
+    const A = await import('./actions')
+    const { createBaseState } = await import('./state')
+    const s = createBaseState()
+    const c = { s, me: 'Phan Anh', meId: 'u1', now: new Date() }
+    expect(A.sendReminders(c).ok).toBe(false)
+    const due = new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10)
+    A.createWorkshop(c, { name: 'Xưởng A', area: '', contactName: '', phone: '0903112456' })
+    A.createMaterial(c, { name: 'Vải', unit: 'mét', category: 'vai', minStock: 1, okStock: 2 })
+    A.importMaterial(c, { materialId: s.materials[0].id, qty: 100, price: 1000, supplier: '' })
+    A.createProduct(c, { sku: 'SP1', name: 'Áo', laborCost: 0, bom: [{ material: s.materials[0].id, qtyPerUnit: 1 }] })
+    const id = (A.createOrder(c, { productId: s.products[0].id, workshopId: s.workshops[0].id, sizes: [{ size: 'M', qty: 5 }], dueDate: due }) as { id: string }).id
+    A.confirmCut(c, id)
+    A.receive(c, id, { sizes: [{ size: 'M', qty: 5 }] })
+    expect(A.sendReminders(c).ok).toBe(true)
+    expect(s.notifications.find(n => n.roles.includes('qc') && /Việc QC/.test(n.text))?.text).toMatch(/chờ QC/)
+  })
+})
