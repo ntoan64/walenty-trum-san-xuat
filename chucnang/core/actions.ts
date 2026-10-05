@@ -14,6 +14,7 @@ export const LIMITS = {
   importQty: 1_000_000, // số lượng 1 dòng nhập
   price: 1_000_000_000, // đơn giá
   lines: 50, // số dòng 1 phiếu / 1 lần QC
+  photos: 4, // ảnh / 1 dòng lỗi
   orderQty: 100_000, // tổng 1 lệnh
   sizes: 20,
   dueDays: 365, // hạn tối đa
@@ -248,11 +249,11 @@ export function noteCustomerRepair(c: Ctx, id: string, text: string): Result {
 /* ---------- sản phẩm ---------- */
 // Kiểm tra danh sách size + SKU: không trùng size, SKU không trùng với SKU khác trong hệ thống
 function variantsError(c: Ctx, variants: ProductVariant[], selfId?: string) {
-  if (variants.length > LIMITS.sizes) return `Tối đa ${LIMITS.sizes} size`;
-  const sizes = variants.map(v => v.size), skus = variants.map(v => v.sku);
+  if (variants.length > 200) return "Tối đa 200 phiên bản";
+  const sizes = variants.map(v => `${v.size}|${v.color ?? ""}`), skus = variants.map(v => v.sku);
   if (variants.some(v => !v.size || v.size.length > 10)) return "Tên size không hợp lệ";
-  if (variants.some(v => !CODE_RE.test(v.sku))) return "SKU size chỉ gồm chữ, số, dấu gạch ngang (2–20 ký tự)";
-  if (new Set(sizes).size !== sizes.length) return "Size bị trùng";
+  if (variants.some(v => !SKU_RE.test(v.sku))) return "SKU chỉ gồm chữ, số, dấu - _ . (2–40 ký tự)";
+  if (new Set(sizes).size !== sizes.length) return "Size (cùng màu) bị trùng";
   if (new Set(skus).size !== skus.length) return "Hai size đang trùng SKU";
   for (const p of c.s.products) {
     if (p.id === selfId) continue;
@@ -262,8 +263,21 @@ function variantsError(c: Ctx, variants: ProductVariant[], selfId?: string) {
   }
   return null;
 }
+const SKU_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{1,39}$/;
+const num = (x: unknown) => (typeof x === "number" && isFinite(x) && x >= 0 ? x : undefined);
 const cleanVariants = (vs: ProductVariant[] = []) =>
-  vs.map(v => ({ size: String(v.size ?? "").trim().toUpperCase(), sku: String(v.sku ?? "").trim().toUpperCase() })).filter(v => v.size || v.sku);
+  vs.map(v => ({
+    size: String(v.size ?? "").trim().toUpperCase(),
+    color: String(v.color ?? "").trim() || undefined,
+    sku: String(v.sku ?? "").trim().toUpperCase(),
+    barcode: String(v.barcode ?? "").trim() || undefined,
+    price: num(v.price), cost: num(v.cost),
+    image: typeof v.image === "string" && /^https:\/\//.test(v.image) && v.image.length < 400 ? v.image : undefined,
+    stock: num(v.stock),
+    prices: v.prices && typeof v.prices === "object"
+      ? Object.fromEntries(Object.entries(v.prices).filter(([k, x]) => k.length <= 40 && num(x) !== undefined).slice(0, 12))
+      : undefined,
+  })).filter(v => v.size || v.sku);
 
 export function createProduct(c: Ctx, a: { sku: string; name: string; laborCost: number; bom: BomLine[]; variants?: ProductVariant[] }): Result {
   const sku = a.sku.trim().toUpperCase(), name = a.name.trim();
@@ -286,6 +300,66 @@ export function createProduct(c: Ctx, a: { sku: string; name: string; laborCost:
   if (bom.some(l => byId(c.s.materials, l.material)?.status !== "active")) return fail("Định mức chỉ dùng phụ liệu đang dùng");
   c.s.products.push({ id: uid(c, "p"), sku, name, laborCost: a.laborCost, bom, variants: variants.length ? variants : undefined, status: "active" });
   return ok(`Đã thêm sản phẩm ${sku}${variants.length ? ` (${variants.length} size)` : ""}`);
+}
+
+/* ---------- nhập sản phẩm từ file Excel xuất của Sapo ---------- */
+export interface SapoItem { name: string; category?: string; tags?: string[]; variants: ProductVariant[] }
+
+// Khớp theo SKU phiên bản (hoặc cùng tên) → cập nhật; chưa có → tạo mới (chưa có định mức).
+// Định mức + tiền công đã khai báo trong app luôn được giữ nguyên.
+export function importSapo(c: Ctx, items: SapoItem[]): Result {
+  if (!Array.isArray(items) || !items.length) return fail("File không có sản phẩm nào");
+  if (items.length > 60) return fail("Mỗi lần gửi tối đa 60 mẫu");
+  let created = 0, updated = 0;
+  for (const it of items) {
+    const name = String(it.name ?? "").trim();
+    if (!name || name.length > LIMITS.name) return fail(`Tên sản phẩm không hợp lệ: ${name.slice(0, 40)}`);
+    const variants = cleanVariants(it.variants);
+    if (!variants.length) continue;
+    const skus = new Set(variants.map(v => v.sku));
+    const p = c.s.products.find(x => x.variants?.some(v => skus.has(v.sku)))
+      ?? c.s.products.find(x => x.name.trim().toLowerCase() === name.toLowerCase());
+    const verr = variantsError(c, variants, p?.id);
+    if (verr) return fail(`${name}: ${verr}`);
+    const category = String(it.category ?? "").trim().slice(0, 60) || undefined;
+    const tags = (it.tags ?? []).map(t => String(t).trim()).filter(Boolean).slice(0, 10);
+    if (p) {
+      p.name = name; p.variants = variants; p.category = category ?? p.category; p.tags = tags.length ? tags : p.tags; p.source = "sapo";
+      updated++;
+    } else {
+      let base = `M-${variants[0].sku}`.slice(0, 40);
+      while (c.s.products.some(x => x.sku === base)) base = `${base.slice(0, 36)}-${c.s.seq.id++}`;
+      c.s.products.push({ id: uid(c, "p"), sku: base, name, laborCost: 0, bom: [], variants, category, tags, source: "sapo", status: "active" });
+      created++;
+    }
+  }
+  return ok(`Sapo: thêm ${created} mẫu, cập nhật ${updated} mẫu`);
+}
+
+export function setProductBom(c: Ctx, id: string, a: { laborCost: number; bom: BomLine[] }): Result {
+  const p = byId(c.s.products, id);
+  if (!p) return fail("Không tìm thấy sản phẩm");
+  if (!(a.laborCost >= 0) || a.laborCost > LIMITS.labor) return fail("Tiền công may không hợp lệ");
+  const bom = (a.bom ?? []).filter(l => l.material);
+  if (!bom.length) return fail("Thêm ít nhất 1 phụ liệu vào định mức");
+  if (bom.length > LIMITS.bomLines) return fail(`Định mức tối đa ${LIMITS.bomLines} phụ liệu`);
+  if (bom.some(l => !(l.qtyPerUnit > 0) || l.qtyPerUnit > LIMITS.bomQty)) return fail("Định mức mỗi phụ liệu phải lớn hơn 0");
+  if (new Set(bom.map(l => l.material)).size !== bom.length) return fail("Một phụ liệu bị chọn 2 lần");
+  if (bom.some(l => !byId(c.s.materials, l.material))) return fail("Phụ liệu không tồn tại");
+  p.bom = bom;
+  p.laborCost = a.laborCost;
+  return ok(`${p.name}: đã lưu định mức (${bom.length} phụ liệu)`);
+}
+
+// Tìm phiên bản theo SKU / barcode (quét mã)
+export function findBySku(s: DataState, code: string) {
+  const k = code.trim().toUpperCase();
+  if (!k) return null;
+  for (const p of s.products) {
+    const v = p.variants?.find(x => x.sku === k || x.barcode?.toUpperCase() === k);
+    if (v) return { product: p, variant: v };
+  }
+  return null;
 }
 
 // Thêm / sửa size + SKU cho sản phẩm đã có
@@ -350,7 +424,7 @@ export function sendMessage(c: Ctx, a: { userIds: string[]; text: string }): Res
 }
 
 /* ---------- lệnh sản xuất ---------- */
-export function createOrder(c: Ctx, a: { productId: string; workshopId: string; sizes: SizeQty[]; dueDate: string }): Result {
+export function createOrder(c: Ctx, a: { productId: string; workshopId: string; sizes: SizeQty[]; dueDate: string; color?: string }): Result {
   const sizes = a.sizes.map(x => ({ size: x.size.trim().toUpperCase(), qty: x.qty })).filter(x => x.size && x.qty);
   if (!sizes.length) return fail("Nhập số lượng ít nhất 1 size");
   if (sizes.some(x => !isInt(x.qty) || x.qty < 0)) return fail("Số lượng mỗi size phải là số nguyên");
@@ -364,6 +438,11 @@ export function createOrder(c: Ctx, a: { productId: string; workshopId: string; 
   if (p.status !== "active") return fail(`${p.sku} đang ${PRODUCT_STATUS[p.status].toLowerCase()}, không tạo lệnh được`);
   const bad = unusableMaterials(p, c.s.materials);
   if (bad.length) return fail(`Phụ liệu ${bad.map(m => `${m.code} (${MATERIAL_STATUS[m.status].toLowerCase()})`).join(", ")} không dùng được cho lệnh mới`);
+  if (!p.bom.length) return fail(`${p.name} chưa có định mức phụ liệu, khai báo ở trang Sản phẩm trước`);
+  const colors = [...new Set((p.variants ?? []).map(v => v.color).filter(Boolean))] as string[];
+  const color = a.color?.trim() || undefined;
+  if (colors.length > 1 && !color) return fail("Sản phẩm có nhiều màu, chọn màu cho lệnh");
+  if (color && colors.length && !colors.includes(color)) return fail(`Màu ${color} không có trong sản phẩm`);
   const ws = byId(c.s.workshops, a.workshopId);
   if (!ws) return fail("Chọn xưởng");
   if (!ws.active) return fail(`${ws.name} đã ngừng hợp tác`);
@@ -376,7 +455,7 @@ export function createOrder(c: Ctx, a: { productId: string; workshopId: string; 
   if (shortages(p, qty, c.s.materials).length) return fail("Không đủ phụ liệu, cần nhập thêm trước khi tạo lệnh");
   const code = `LSX-${String(c.s.seq.order++).padStart(4, "0")}`;
   const o: ProductionOrder = {
-    id: code, code, product: p.id, workshop: a.workshopId, qty, sizes, step: "cut",
+    id: code, code, product: p.id, workshop: a.workshopId, qty, sizes, color: color ?? (colors.length === 1 ? colors[0] : undefined), step: "cut",
     unitCost: unitCost(p, c.s.materials), loss: 0, lossApproved: false, batches: [],
     createdBy: c.me, createdAt: c.now, dueAt,
   };
@@ -429,6 +508,13 @@ export function receive(c: Ctx, orderId: string, input: number | { sizes: SizeQt
   return ok(`Đã nhận ${qty} cái, chờ QC`);
 }
 
+// chỉ nhận ảnh đã tải lên Cloudinary
+export const PHOTO_RE = /^https:\/\/res\.cloudinary\.com\/[\w-]+\/image\/upload\/[\w/.,%-]+$/;
+const photosError = (p: unknown) =>
+  p === undefined ? null
+  : !Array.isArray(p) || p.length > LIMITS.photos ? `Mỗi dòng lỗi tối đa ${LIMITS.photos} ảnh`
+  : p.some(x => typeof x !== "string" || x.length > 400 || !PHOTO_RE.test(x)) ? "Ảnh lỗi không hợp lệ" : null;
+
 // QC tự nhập từng dòng lỗi (loại, size, mô tả, số lượng). Pass = số nhận − tổng lỗi.
 export function saveQC(c: Ctx, orderId: string, batchId: string, a: { lines: DefectLine[] }): Result {
   const o = getOrder(c, orderId);
@@ -438,7 +524,12 @@ export function saveQC(c: Ctx, orderId: string, batchId: string, a: { lines: Def
   if (a.lines.length > LIMITS.lines) return fail(`Tối đa ${LIMITS.lines} dòng lỗi`);
   if (a.lines.some(l => tooLong(l.defect, LIMITS.name) || tooLong(l.size, 10))) return fail("Mô tả lỗi hoặc size quá dài");
   if (a.lines.some(l => !["sua", "vai", "hong"].includes(l.kind))) return fail("Loại lỗi không hợp lệ");
-  const lines = a.lines.map(l => ({ ...l, size: l.size.trim(), defect: l.defect.trim() }));
+  const perr = a.lines.map(l => photosError(l.photos)).find(Boolean);
+  if (perr) return fail(perr);
+  const lines: DefectLine[] = a.lines.map(l => ({
+    kind: l.kind, size: l.size.trim(), defect: l.defect.trim(), qty: l.qty,
+    ...(l.photos?.length ? { photos: [...l.photos] } : {}),
+  }));
   const lerr = validateDefectLines(lines, (bt.sizes?.length ? bt.sizes : o.sizes)?.map(x => x.size));
   if (lerr) return fail(lerr);
   if (bt.sizes?.length) {
@@ -455,7 +546,7 @@ export function saveQC(c: Ctx, orderId: string, batchId: string, a: { lines: Def
   if (err) return fail(err);
   const suaLines = lines.filter(l => l.kind === "sua");
   const summary = (ls: DefectLine[]) => [...new Set(ls.map(l => l.defect))].join(", ");
-  bt.qc = { ...q, defect: summary(lines) || "Không lỗi", lines, photos: [], by: c.me, at: c.now };
+  bt.qc = { ...q, defect: summary(lines) || "Không lỗi", lines, photos: lines.flatMap(l => l.photos ?? []), by: c.me, at: c.now };
   event(c, "pass", o, q.pass, 1);
   event(c, "sua", o, q.sua, 1);
   event(c, "vai", o, q.vai, 1);
@@ -465,8 +556,8 @@ export function saveQC(c: Ctx, orderId: string, batchId: string, a: { lines: Def
   if (q.sua > 0) {
     const code = `R-${String(c.s.seq.repair++).padStart(3, "0")}`;
     c.s.repairs.push({
-      id: code, code, order: o.id, workshop: o.workshop, qty: q.sua, defect: summary(suaLines), photos: [], round: 1,
-      items: suaLines.map(l => ({ size: l.size, defect: l.defect, qty: l.qty })),
+      id: code, code, order: o.id, workshop: o.workshop, qty: q.sua, defect: summary(suaLines), photos: suaLines.flatMap(l => l.photos ?? []), round: 1,
+      items: suaLines.map(l => ({ size: l.size, defect: l.defect, qty: l.qty, ...(l.photos?.length ? { photos: l.photos } : {}) })),
       sentAt: c.now, dueAt: new Date(c.now.getTime() + REPAIR_DUE_DAYS * DAY), status: "sent",
       history: [{ at: tick(c), by: c.me, text: "QC tạo phiếu, gửi trả xưởng" }],
     });
@@ -640,7 +731,7 @@ export function requc(c: Ctx, id: string, q: { pass: number; again: number; hong
     const code = `R-${String(c.s.seq.repair++).padStart(3, "0")}`;
     const due = new Date(c.now.getTime() + REPAIR_DUE_DAYS * DAY);
     c.s.repairs.push({
-      id: code, code, order: r.order, workshop: r.workshop, qty: q.again, defect: r.defect, photos: [], round,
+      id: code, code, order: r.order, workshop: r.workshop, qty: q.again, defect: r.defect, photos: r.photos, round,
       sentAt: c.now, dueAt: due, status: "sent", parent: r.id,
       history: [{ at: tick(c), by: c.me, text: `Tạo từ ${r.code}, gửi trả xưởng lần ${round}` }],
     });
@@ -735,6 +826,8 @@ export const ACTIONS: Record<string, [Action | null, (c: Ctx, ...args: any[]) =>
   createProduct: ["product.manage", createProduct, "Thêm sản phẩm"],
   setProductStatus: ["product.manage", setProductStatus, "Đổi tình trạng sản phẩm"],
   setProductVariants: ["product.manage", setProductVariants, "Sửa size + SKU sản phẩm"],
+  importSapo: ["product.manage", importSapo, "Nhập sản phẩm từ Sapo"],
+  setProductBom: ["product.manage", setProductBom, "Sửa định mức sản phẩm"],
   createOrder: ["order.create", createOrder, "Tạo lệnh sản xuất"],
   confirmCut: ["order.cut", confirmCut, "Xác nhận đã cắt"],
   receive: ["order.receive", receive, "Nhận hàng từ xưởng"],

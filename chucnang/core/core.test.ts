@@ -168,3 +168,34 @@ describe('nhắc việc', () => {
     expect(s.notifications.find(n => n.roles.includes('qc') && /Việc QC/.test(n.text))?.text).toMatch(/chờ QC/)
   })
 })
+
+describe('nhập Sapo', () => {
+  it('tạo mẫu mới, nhập lại thì cập nhật theo SKU; chưa có định mức thì không tạo lệnh', async () => {
+    const A = await import('./actions')
+    const { createBaseState } = await import('./state')
+    const s = createBaseState()
+    const c = { s, me: 'Phan Anh', meId: 'u1', now: new Date() }
+    const item = { name: 'Chelsea Skirts', category: 'CHÂN VÁY', tags: ['Nhận sửa - không nhận custom'], variants: [
+      { size: 'S', color: 'Beige', sku: 'PVN5778', price: 720000 }, { size: 'M', color: 'Beige', sku: 'PVN5779' }, { size: 'S', color: 'Black', sku: 'PVN5790' }] }
+    expect(A.importSapo(c, [item]).ok).toBe(true)
+    expect(s.products).toHaveLength(1)
+    expect(A.importSapo(c, [{ ...item, name: 'Chelsea Skirts 2026' }]).ok).toBe(true)
+    expect(s.products).toHaveLength(1) // khớp SKU → cập nhật, không tạo trùng
+    expect(s.products[0].name).toBe('Chelsea Skirts 2026')
+    expect(A.findBySku(s, 'pvn5790')?.variant.color).toBe('Black')
+    A.createWorkshop(c, { name: 'Xưởng A', area: '', contactName: '', phone: '0903112456' })
+    const due = new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10)
+    const r = A.createOrder(c, { productId: s.products[0].id, workshopId: s.workshops[0].id, sizes: [{ size: 'S', qty: 1 }], dueDate: due })
+    expect(r.ok ? '' : r.error).toMatch(/định mức/)
+  })
+})
+
+describe('ảnh lỗi QC', () => {
+  it('chỉ nhận link Cloudinary', async () => {
+    const { PHOTO_RE } = await import('./actions')
+    expect(PHOTO_RE.test('https://res.cloudinary.com/ue0mnb27/image/upload/v1759000000/walenty/qc/abc123.jpg')).toBe(true)
+    expect(PHOTO_RE.test('https://evil.example.com/x.jpg')).toBe(false)
+    expect(PHOTO_RE.test('javascript:alert(1)')).toBe(false)
+    expect(PHOTO_RE.test('https://res.cloudinary.com/x/image/upload/a.jpg"><script>')).toBe(false)
+  })
+})

@@ -11,6 +11,7 @@ import { useConfirmAction } from "@/lib/use-action";
 import { Summary, useConfirm } from "@/components/xf/confirm-provider";
 import { Collapsible } from "@/components/xf/collapsible";
 import { Avatar } from "@/components/xf/avatar";
+import { BackupPanel } from "@/components/xf/backup-panel";
 import { Field, PageHeader, Panel, StatCard, StatusPill, TableWrap } from "@/components/xf/basics";
 
 // Gợi ý mật khẩu ngẫu nhiên dễ đọc cho admin cấp
@@ -176,6 +177,7 @@ export default function UsersPage() {
           </table>
         </TableWrap>
       </Panel>
+      <BackupPanel />
       {reset && <ResetPassword user={reset} onClose={() => setReset(null)} />}
     </>
   );

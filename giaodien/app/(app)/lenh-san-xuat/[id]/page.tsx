@@ -21,6 +21,7 @@ import { BalanceBar, BalanceEquation, BalanceLegend, StepProgress } from "@/comp
 import { RepairTable } from "@/components/xf/repair-table";
 import { ConfirmButton } from "@/components/xf/confirm-dialog";
 import { useDraft } from "@/lib/use-draft";
+import { PhotoPicker, PhotoStrip } from "@/components/xf/photos";
 import { cn } from "@/lib/utils";
 
 function ActionBox({ title, desc, children, tone }: { title: string; desc?: React.ReactNode; children?: React.ReactNode; tone?: "warn" }) {
@@ -106,7 +107,7 @@ function ReceiveTotal({ o, max, ws }: { o: ProductionOrder; max: number; ws: str
   );
 }
 
-type DLine = { key: number; kind: DefectLine["kind"]; size: string; defect: string; qty: string };
+type DLine = { key: number; kind: DefectLine["kind"]; size: string; defect: string; qty: string; photos?: string[] };
 
 // QC tự nhập từng dòng lỗi: loại lỗi, size, mô tả (gợi ý sẵn nhưng gõ tự do), số lượng. Pass tự tính.
 function QCForm({ o, b }: { o: ProductionOrder; b: Batch }) {
@@ -117,7 +118,8 @@ function QCForm({ o, b }: { o: ProductionOrder; b: Batch }) {
   const sizes = (b.sizes?.length ? b.sizes : o.sizes)?.map(x => x.size) ?? [];
   const [lines, setLines] = useDraft<DLine[]>(`qc:${b.id}:lines`, []);
   const [seq, setSeq] = useDraft(`qc:${b.id}:seq`, 1);
-  const toLines = (): DefectLine[] => lines.map(l => ({ kind: l.kind, size: l.size, defect: l.defect, qty: Math.floor(+l.qty || 0) }));
+  const toLines = (): DefectLine[] => lines.map(l => ({ kind: l.kind, size: l.size, defect: l.defect, qty: Math.floor(+l.qty || 0), photos: l.photos ?? [] }));
+  const noPhoto = lines.filter(l => !l.photos?.length).length;
   const fails = toLines().reduce((t, l) => t + l.qty, 0);
   const pass = b.received - fails;
   const set = (key: number, patch: Partial<DLine>) => setLines(ls => ls.map(l => (l.key === key ? { ...l, ...patch } : l)));
@@ -132,7 +134,7 @@ function QCForm({ o, b }: { o: ProductionOrder; b: Batch }) {
             <Summary rows={[
               ["Đợt nhận", `${fmtDT(b.receivedAt)} · ${b.received} cái`],
               ["Pass (nhập kho)", `${pass} cái`],
-              ...ls.map(l => [`${DEFECT_KIND[l.kind]} · ${l.size}`, `${l.defect} × ${l.qty}`] as [string, string]),
+              ...ls.map(l => [`${DEFECT_KIND[l.kind]} · ${l.size}`, `${l.defect} × ${l.qty} · ${l.photos?.length ?? 0} ảnh`] as [string, string]),
             ]} />
             {ls.some(l => l.kind === "sua") && <p className="mt-2 text-xs">Sẽ tự tạo phiếu trả sửa về xưởng cho các dòng lỗi may.</p>}
           </>
@@ -167,6 +169,10 @@ function QCForm({ o, b }: { o: ProductionOrder; b: Batch }) {
               className="col-span-2 justify-self-end rounded-md p-1.5 text-subtle hover:bg-bad-soft hover:text-bad sm:order-5 sm:col-span-1">
               <Trash2 className="size-4" />
             </button>
+            <div className="col-span-2 flex items-center gap-2 sm:order-6 sm:col-span-5">
+              <PhotoPicker label={`Thêm ảnh lỗi dòng ${i + 1}`} value={l.photos ?? []} onChange={v => set(l.key, { photos: v })} />
+              {!l.photos?.length && <span className="text-[11.5px] text-bad">Cần ít nhất 1 ảnh lỗi</span>}
+            </div>
           </div>
         ))}
         <datalist id="defects">{suggest.map(d => <option key={d} value={d} />)}</datalist>
@@ -177,9 +183,12 @@ function QCForm({ o, b }: { o: ProductionOrder; b: Batch }) {
             Pass <b className="num text-ok">{pass}</b> · lỗi <b className="num">{fails}</b> / {b.received}
           </span>
         </div>
-        <div className="flex justify-end"><Button onClick={submit} disabled={pass < 0}>Lưu kết quả QC</Button></div>
+        <div className="flex items-center justify-end gap-2">
+          {noPhoto > 0 && <span className="text-[12px] text-bad">Còn {noPhoto} dòng chưa có ảnh</span>}
+          <Button onClick={submit} disabled={pass < 0 || noPhoto > 0}>Lưu kết quả QC</Button>
+        </div>
       </div>
-      <p className="mt-1.5 text-[11.5px] text-subtle">Ảnh lỗi sẽ bắt buộc khi nối Cloudinary (bản sau).</p>
+      <p className="mt-1.5 text-[11.5px] text-subtle">Mỗi dòng lỗi chụp ít nhất 1 ảnh (tối đa 4). Ảnh được thu nhỏ trước khi tải lên.</p>
     </ActionBox>
   );
 }
@@ -529,7 +538,7 @@ export default function OrderDetailPage() {
                     <>
                       <td className="r num">{bt.qc.pass}</td><td className="r num">{bt.qc.sua}</td>
                       <td className="r num">{bt.qc.vai}</td><td className="r num">{bt.qc.hong}</td>
-                      <td className="text-xs">{bt.qc.lines?.length ? bt.qc.lines.map((l, k) => <div key={k}><b>{l.size}</b> · {l.defect} ×{l.qty}</div>) : <span className="text-subtle">{bt.qc.sua + bt.qc.vai + bt.qc.hong ? bt.qc.defect : "Không lỗi"}</span>}</td>
+                      <td className="text-xs">{bt.qc.lines?.length ? bt.qc.lines.map((l, k) => <div key={k}><b>{l.size}</b> · {l.defect} ×{l.qty} <PhotoStrip photos={l.photos} size={28} className="ml-1" /></div>) : <span className="text-subtle">{bt.qc.sua + bt.qc.vai + bt.qc.hong ? bt.qc.defect : "Không lỗi"}</span>}</td>
                       <td><StatusPill tone="ok" dot>Đã QC</StatusPill></td>
                     </>
                   ) : (

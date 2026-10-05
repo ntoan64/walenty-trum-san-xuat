@@ -69,9 +69,17 @@ export interface BomLine {
 }
 
 // Mỗi size một mã SKU riêng (giống phiên bản trên Sapo)
+// Phiên bản sản phẩm theo cấu trúc Sapo: size × màu, mỗi phiên bản 1 SKU
 export interface ProductVariant {
   size: string
+  color?: string
   sku: string
+  barcode?: string
+  price?: number // giá bán lẻ
+  cost?: number // giá nhập (Sapo)
+  image?: string // link ảnh (Sapo)
+  stock?: number // tồn kho trên Sapo (cộng các chi nhánh) lúc nhập file
+  prices?: Record<string, number> // các bảng giá khác: EOSS, TMĐT, Shopee…
 }
 
 export interface Product {
@@ -81,6 +89,9 @@ export interface Product {
   laborCost: number
   bom: BomLine[]
   variants?: ProductVariant[]
+  category?: string // loại sản phẩm (BLAZER, QUẦN…)
+  tags?: string[] // vd "Không nhận sửa - custom"
+  source?: "sapo"
   status: ItemStatus
 }
 
@@ -109,6 +120,7 @@ export interface DefectLine {
   size: string
   defect: string
   qty: number
+  photos?: string[] // ảnh lỗi (link Cloudinary)
 }
 
 export interface BatchQC {
@@ -140,6 +152,7 @@ export interface ProductionOrder {
   dueAt: Date
   step: Step
   unitCost: number
+  color?: string // màu (sản phẩm nhiều màu)
   sizes?: SizeQty[]
   loss: number
   lossApproved: boolean
@@ -166,7 +179,7 @@ export interface RepairTicket {
   sentAt: Date
   dueAt: Date
   status: RepairStatus
-  items?: { size: string; defect: string; qty: number }[] // chi tiết theo size
+  items?: { size: string; defect: string; qty: number; photos?: string[] }[] // chi tiết theo size
   requc?: { pass: number; again: number; hong: number; by: string; at: Date } | null
   history: { at: Date; by: string; text: string }[]
   parent?: string

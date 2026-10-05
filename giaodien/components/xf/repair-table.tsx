@@ -10,6 +10,7 @@ import { Summary } from "./confirm-provider";
 import { wsName } from "@/lib/actions";
 import { useDraft } from "@/lib/use-draft";
 import { EmptyState, NumberField, StatusPill, TableWrap } from "./basics";
+import { PhotoStrip } from "@/components/xf/photos";
 
 function RepairStatus({ r, now }: { r: RepairTicket; now: Date }) {
   if (r.status === "closed") return <StatusPill tone="ok" dot>Đã xong</StatusPill>;
@@ -97,7 +98,7 @@ export function RepairTable({ list, empty = "Không có phiếu trả sửa." }:
                 <td className="num whitespace-nowrap">{byId(data.orders, r.order)?.code}</td>
                 <td className="whitespace-nowrap">{wsName(data, r.workshop)}</td>
                 <td className="r num">{r.qty}</td>
-                <td className="text-[13px]">{r.items?.length ? r.items.map((x, k) => <div key={k} className="whitespace-nowrap"><b>{x.size}</b> · {x.defect} ×{x.qty}</div>) : r.defect}</td>
+                <td className="text-[13px]">{r.items?.length ? r.items.map((x, k) => <div key={k} className="whitespace-nowrap"><b>{x.size}</b> · {x.defect} ×{x.qty} <PhotoStrip photos={x.photos} size={28} className="ml-1" /></div>) : <>{r.defect} <PhotoStrip photos={r.photos} size={28} className="ml-1" /></>}</td>
                 <td className="num whitespace-nowrap">{fmtD(r.sentAt)} → {fmtD(r.dueAt)}</td>
                 <td><RepairStatus r={r} now={now} /></td>
                 <td><RepairAction r={r} /></td>

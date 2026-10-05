@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { MongoClient, type Db } from "mongodb";
 
 // Đọc chucnang/.env (Next.js chỉ tự đọc .env trong thư mục giaodien)
-function loadEnv() {
+export function loadEnv() {
   if (process.env.MONGODB_URI) return;
   const candidates = [
     // turbopackIgnore: chỉ dùng khi chạy local, không đưa file .env vào bản build

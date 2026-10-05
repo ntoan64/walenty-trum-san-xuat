@@ -12,6 +12,7 @@ import { Summary } from "@/components/xf/confirm-provider";
 import { isoDateVN, nf, vnd } from "@/lib/format";
 import { CalcHint, EmptyState, Field, PageHeader, Panel, StatCard, StatusPill } from "@/components/xf/basics";
 import { OrderCard } from "@/components/xf/order-card";
+import { SapoSheetPanel } from "@/components/xf/sapo-sheet";
 import { useDraft } from "@/lib/use-draft";
 import { balanceOf } from "@/lib/selectors";
 
@@ -164,7 +165,7 @@ function CreateOrder() {
 }
 
 export default function OrdersPage() {
-  const { data: s } = useStore();
+  const { data: s, can } = useStore();
   const now = new Date();
   const [q, setQ] = useDraft("orders:q", "");
   // tìm theo mã lệnh, sản phẩm, SKU, xưởng, size
@@ -224,6 +225,7 @@ export default function OrdersPage() {
           );
         })}
       </div>
+      {can("product.manage") && can("price.view") && <SapoSheetPanel kind="purchase" />}
     </>
   );
 }

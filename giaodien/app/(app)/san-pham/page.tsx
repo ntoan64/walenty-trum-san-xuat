@@ -6,6 +6,8 @@ import Link from "next/link";
 import { byId, isLive, materialCost, PRODUCT_STATUS, sum, type BomLine, type ItemStatus, type Product, type ProductVariant } from "@core";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { VariantsEditor } from "@/components/xf/variants-editor";
+import { SapoSheetPanel } from "@/components/xf/sapo-sheet";
+import { BomDialog } from "@/components/xf/bom-dialog";
 import { Button } from "@/components/ui/button";
 import { matches } from "@/lib/search";
 import { SearchBox } from "@/components/xf/search-box";
@@ -137,6 +139,7 @@ function VariantsDialog({ p, onClose }: { p: Product; onClose: () => void }) {
 function ProductDetail({ p, mat, stock }: { p: Product; mat: number; stock: number }) {
   const { data: s, can } = useStore();
   const [editVariants, setEditVariants] = useState(false);
+  const [editBom, setEditBom] = useState(false);
   const total = mat + p.laborCost;
   const matPct = total ? (mat / total) * 100 : 0;
   const orders = s.orders.filter(o => o.product === p.id).slice().sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
@@ -148,7 +151,14 @@ function ProductDetail({ p, mat, stock }: { p: Product; mat: number; stock: numb
       <div className="min-w-0">
         <div className="mb-2 flex items-baseline justify-between gap-2">
           <h3 className="font-serif text-[15px] font-semibold text-brand">Định mức cho 1 sản phẩm</h3>
-          <span className="text-xs text-muted-foreground">{p.bom.length} phụ liệu</span>
+          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+            {p.bom.length ? `${p.bom.length} phụ liệu` : <span className="text-warn">Chưa có định mức, chưa tạo lệnh được</span>}
+            {can("product.manage") && (
+              <button type="button" onClick={() => setEditBom(true)} className="inline-flex items-center gap-1 font-semibold text-brand hover:underline">
+                <Pencil className="size-3.5" /> {p.bom.length ? "Sửa" : "Khai báo"}
+              </button>
+            )}
+          </span>
         </div>
         <div className="overflow-hidden rounded-lg border border-line">
           <table className="w-full text-[13px]">
@@ -205,6 +215,7 @@ function ProductDetail({ p, mat, stock }: { p: Product; mat: number; stock: numb
             </div>
           ) : <p className="text-[12.5px] text-muted-foreground">Chưa khai báo SKU theo size.</p>}
           {editVariants && <VariantsDialog p={p} onClose={() => setEditVariants(false)} />}
+          {editBom && <BomDialog p={p} onClose={() => setEditBom(false)} />}
         </div>
         <div className="rounded-lg bg-surface-low p-3">
           <div className="eyebrow mb-1.5">Cơ cấu giá vốn</div>
@@ -312,6 +323,7 @@ export default function ProductsPage() {
           </div>
         }
       />
+      {manage && <SapoSheetPanel />}
       {manage && <CreateProduct />}
 
       <Panel

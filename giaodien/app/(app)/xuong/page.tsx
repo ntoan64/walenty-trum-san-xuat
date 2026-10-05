@@ -15,6 +15,7 @@ import { Summary } from "@/components/xf/confirm-provider";
 import { Collapsible } from "@/components/xf/collapsible";
 import { daysLate, fmtD } from "@/lib/format";
 import { EmptyState, Field, PageHeader, Panel, StatCard, StatusPill, TableWrap } from "@/components/xf/basics";
+import { PhotoStrip } from "@/components/xf/photos";
 
 // Trang Xưởng may: theo dõi xưởng nào đang giữ hàng lỗi của mình mang về sửa, lỗi gì, giữ bao lâu
 type WsForm = { name: string; area: string; contactName: string; phone: string };
@@ -201,7 +202,7 @@ export default function WorkshopsPage() {
                           </td>
                           <td>{p?.name}</td>
                           <td className="r num font-semibold">{r.qty}</td>
-                          <td className="text-[13px]">{r.items?.length ? r.items.map((x, k) => <div key={k} className="whitespace-nowrap"><StatusPill tone="muted" className="mr-1">{x.size}</StatusPill>{x.defect} ×{x.qty}</div>) : <StatusPill tone="warn">{r.defect}</StatusPill>}</td>
+                          <td className="text-[13px]">{r.items?.length ? r.items.map((x, k) => <div key={k} className="whitespace-nowrap"><StatusPill tone="muted" className="mr-1">{x.size}</StatusPill>{x.defect} ×{x.qty} <PhotoStrip photos={x.photos} size={28} className="ml-1" /></div>) : <StatusPill tone="warn">{r.defect}</StatusPill>}</td>
                           <td className="num">{fmtD(r.sentAt)}</td>
                           <td className="r num">{days} ngày</td>
                           <td className={`num ${isLate ? "font-semibold text-bad" : ""}`}>
