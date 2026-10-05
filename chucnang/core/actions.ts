@@ -248,10 +248,11 @@ export function noteCustomerRepair(c: Ctx, id: string, text: string): Result {
 
 /* ---------- sản phẩm ---------- */
 // Kiểm tra danh sách size + SKU: không trùng size, SKU không trùng với SKU khác trong hệ thống
-function variantsError(c: Ctx, variants: ProductVariant[], selfId?: string) {
+// maxSize: size tự nhập tối đa 10 ký tự; dữ liệu Sapo có mẫu ghi cả mô tả vào "Kích thước" nên cho dài hơn
+function variantsError(c: Ctx, variants: ProductVariant[], selfId?: string, maxSize = 10) {
   if (variants.length > 200) return "Tối đa 200 phiên bản";
   const sizes = variants.map(v => `${v.size}|${v.color ?? ""}`), skus = variants.map(v => v.sku);
-  if (variants.some(v => !v.size || v.size.length > 10)) return "Tên size không hợp lệ";
+  if (variants.some(v => !v.size || v.size.length > maxSize)) return "Tên size không hợp lệ";
   if (variants.some(v => !SKU_RE.test(v.sku))) return "SKU chỉ gồm chữ, số, dấu - _ . (2–40 ký tự)";
   if (new Set(sizes).size !== sizes.length) return "Size (cùng màu) bị trùng";
   if (new Set(skus).size !== skus.length) return "Hai size đang trùng SKU";
@@ -265,18 +266,21 @@ function variantsError(c: Ctx, variants: ProductVariant[], selfId?: string) {
 }
 const SKU_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{1,39}$/;
 const num = (x: unknown) => (typeof x === "number" && isFinite(x) && x >= 0 ? x : undefined);
+const numMap = (m: unknown, max: number) => m && typeof m === "object"
+  ? Object.fromEntries(Object.entries(m).filter(([k, x]) => k.length <= 40 && num(x) !== undefined).slice(0, max).map(([k, x]) => [k, num(x)!]))
+  : undefined;
 const cleanVariants = (vs: ProductVariant[] = []) =>
   vs.map(v => ({
-    size: String(v.size ?? "").trim().toUpperCase(),
+    // size ngắn (S, M, XL…) viết hoa; size dài kiểu mô tả của Sapo giữ nguyên
+    size: (s => (s.length <= 5 ? s.toUpperCase() : s))(String(v.size ?? "").trim().replace(/\s+/g, " ")),
     color: String(v.color ?? "").trim() || undefined,
     sku: String(v.sku ?? "").trim().toUpperCase(),
     barcode: String(v.barcode ?? "").trim() || undefined,
     price: num(v.price), cost: num(v.cost),
     image: typeof v.image === "string" && /^https:\/\//.test(v.image) && v.image.length < 400 ? v.image : undefined,
     stock: num(v.stock),
-    prices: v.prices && typeof v.prices === "object"
-      ? Object.fromEntries(Object.entries(v.prices).filter(([k, x]) => k.length <= 40 && num(x) !== undefined).slice(0, 12))
-      : undefined,
+    stocks: numMap(v.stocks, 10),
+    prices: numMap(v.prices, 12),
   })).filter(v => v.size || v.sku);
 
 export function createProduct(c: Ctx, a: { sku: string; name: string; laborCost: number; bom: BomLine[]; variants?: ProductVariant[] }): Result {
@@ -303,7 +307,7 @@ export function createProduct(c: Ctx, a: { sku: string; name: string; laborCost:
 }
 
 /* ---------- nhập sản phẩm từ file Excel xuất của Sapo ---------- */
-export interface SapoItem { name: string; category?: string; tags?: string[]; variants: ProductVariant[] }
+export interface SapoItem { name: string; category?: string; brand?: string; tags?: string[]; variants: ProductVariant[] }
 
 // Khớp theo SKU phiên bản (hoặc cùng tên) → cập nhật; chưa có → tạo mới (chưa có định mức).
 // Định mức + tiền công đã khai báo trong app luôn được giữ nguyên.
@@ -311,29 +315,34 @@ export function importSapo(c: Ctx, items: SapoItem[]): Result {
   if (!Array.isArray(items) || !items.length) return fail("File không có sản phẩm nào");
   if (items.length > 60) return fail("Mỗi lần gửi tối đa 60 mẫu");
   let created = 0, updated = 0;
+  const skipped: string[] = [];
+  // mẫu lỗi thì bỏ qua và báo lại, không chặn cả đợt
   for (const it of items) {
     const name = String(it.name ?? "").trim();
-    if (!name || name.length > LIMITS.name) return fail(`Tên sản phẩm không hợp lệ: ${name.slice(0, 40)}`);
+    if (!name || name.length > LIMITS.name) { skipped.push(`${name.slice(0, 40) || "(không tên)"}: tên không hợp lệ`); continue; }
     const variants = cleanVariants(it.variants);
     if (!variants.length) continue;
     const skus = new Set(variants.map(v => v.sku));
+    // khớp theo SKU; theo tên chỉ khi là mẫu tự tạo chưa có SKU size (Sapo có nhiều mẫu trùng tên)
     const p = c.s.products.find(x => x.variants?.some(v => skus.has(v.sku)))
-      ?? c.s.products.find(x => x.name.trim().toLowerCase() === name.toLowerCase());
-    const verr = variantsError(c, variants, p?.id);
-    if (verr) return fail(`${name}: ${verr}`);
+      ?? c.s.products.find(x => !x.variants?.length && x.source !== "sapo" && x.name.trim().toLowerCase() === name.toLowerCase());
+    const verr = variantsError(c, variants, p?.id, 60);
+    if (verr) { skipped.push(`${name}: ${verr}`); continue; }
     const category = String(it.category ?? "").trim().slice(0, 60) || undefined;
+    const brand = String(it.brand ?? "").trim().slice(0, 60) || undefined;
     const tags = (it.tags ?? []).map(t => String(t).trim()).filter(Boolean).slice(0, 10);
     if (p) {
-      p.name = name; p.variants = variants; p.category = category ?? p.category; p.tags = tags.length ? tags : p.tags; p.source = "sapo";
+      Object.assign(p, { name, variants, category, brand, tags, source: "sapo", syncedAt: c.now });
       updated++;
     } else {
       let base = `M-${variants[0].sku}`.slice(0, 40);
       while (c.s.products.some(x => x.sku === base)) base = `${base.slice(0, 36)}-${c.s.seq.id++}`;
-      c.s.products.push({ id: uid(c, "p"), sku: base, name, laborCost: 0, bom: [], variants, category, tags, source: "sapo", status: "active" });
+      c.s.products.push({ id: uid(c, "p"), sku: base, name, laborCost: 0, bom: [], variants, category, brand, tags, source: "sapo", syncedAt: c.now, status: "active" });
       created++;
     }
   }
-  return ok(`Sapo: thêm ${created} mẫu, cập nhật ${updated} mẫu`);
+  if (!created && !updated && skipped.length) return fail(`Không nhập được: ${skipped.slice(0, 3).join("; ")}`);
+  return ok(`Sapo: thêm ${created} mẫu, cập nhật ${updated} mẫu${skipped.length ? `, bỏ qua ${skipped.length} (${skipped.slice(0, 3).join("; ")})` : ""}`);
 }
 
 export function setProductBom(c: Ctx, id: string, a: { laborCost: number; bom: BomLine[] }): Result {

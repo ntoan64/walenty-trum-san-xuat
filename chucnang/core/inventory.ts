@@ -81,3 +81,21 @@ export function stockLevel(m: Material): StockLevel {
   if (m.stock < okLevel(m)) return 'near'
   return 'ok'
 }
+
+// ----- Số liệu Sapo của một mẫu -----
+// Tồn Sapo = cộng tồn mọi phiên bản (mọi chi nhánh)
+export const sapoStock = (p: Product) => (p.variants ?? []).reduce((t, v) => t + (v.stock ?? 0), 0)
+// Giá trị tồn Sapo = Σ tồn × giá nhập từng phiên bản
+export const sapoValue = (p: Product) => (p.variants ?? []).reduce((t, v) => t + (v.stock ?? 0) * (v.cost ?? 0), 0)
+// Giá nhập Sapo đại diện (bình quân các phiên bản có giá)
+export function sapoCost(p: Product) {
+  const cs = (p.variants ?? []).map(v => v.cost ?? 0).filter(x => x > 0)
+  return cs.length ? cs.reduce((a, b) => a + b, 0) / cs.length : 0
+}
+// Giá vốn dùng hiển thị: có định mức thì tính theo định mức, chưa có thì lấy giá nhập Sapo
+export const costOf = (p: Product, materials: Material[]) => (p.bom.length ? unitCost(p, materials) : sapoCost(p))
+// Khoảng giá (vd giá bán lẻ khác nhau giữa các size)
+export function priceRange(vals: (number | undefined)[]): [number, number] | null {
+  const xs = vals.filter((x): x is number => typeof x === 'number' && x > 0)
+  return xs.length ? [Math.min(...xs), Math.max(...xs)] : null
+}

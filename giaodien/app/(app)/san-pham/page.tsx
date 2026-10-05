@@ -3,11 +3,12 @@
 import { Fragment, useState } from "react";
 import { ChevronRight, Info, Pencil, Plus, Shirt, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { byId, isLive, materialCost, PRODUCT_STATUS, sum, type BomLine, type ItemStatus, type Product, type ProductVariant } from "@core";
+import { byId, costOf, isLive, materialCost, priceRange, PRODUCT_STATUS, sapoStock, sum, type BomLine, type ItemStatus, type Product, type ProductVariant } from "@core";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { VariantsEditor } from "@/components/xf/variants-editor";
 import { SapoSheetPanel } from "@/components/xf/sapo-sheet";
 import { BomDialog } from "@/components/xf/bom-dialog";
+import { fmtRange, ProductThumb, SapoVariants } from "@/components/xf/sapo-product";
 import { Button } from "@/components/ui/button";
 import { matches } from "@/lib/search";
 import { SearchBox } from "@/components/xf/search-box";
@@ -208,8 +209,8 @@ function ProductDetail({ p, mat, stock }: { p: Product; mat: number; stock: numb
           {p.variants?.length ? (
             <div className="flex flex-wrap gap-1.5">
               {p.variants.map(v => (
-                <span key={v.size} className="inline-flex items-center gap-1.5 rounded-md bg-surface px-2 py-1 text-[12.5px] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-                  <b className="text-brand">{v.size}</b><span className="num text-muted-foreground">{v.sku}</span>
+                <span key={v.sku} className="inline-flex items-center gap-1.5 rounded-md bg-surface px-2 py-1 text-[12.5px] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+                  <b className="text-brand">{v.size}</b>{v.color && <span className="text-muted-foreground">{v.color}</span>}<span className="num text-muted-foreground">{v.sku}</span>
                 </span>
               ))}
             </div>
@@ -265,7 +266,7 @@ function ProductDetail({ p, mat, stock }: { p: Product; mat: number; stock: numb
   );
 }
 
-type SortKey = "new" | "name" | "sku" | "cost";
+type SortKey = "new" | "name" | "sku" | "cost" | "stock";
 const PAGE = 20;
 
 export default function ProductsPage() {
@@ -275,18 +276,23 @@ export default function ProductsPage() {
   const [q, setQ] = useDraft("products:q", "");
   const [status, setStatus] = useDraft<"all" | ItemStatus>("products:status", "all");
   const [sort, setSort] = useDraft<SortKey>("products:sort", "new");
+  const [cat, setCat] = useDraft("products:cat", "");
+  const cats = [...new Set(s.products.map(p => p.category).filter((x): x is string => !!x))].sort((a, b) => a.localeCompare(b, "vi"));
   const [limit, setLimit] = useState(PAGE);
   const [open, setOpen] = useState<string | null>(null);
   const stock = finishedStock(s);
 
   const rows = s.products
-    .map((p, i) => ({ p, i, mat: materialCost(p, s.materials), stock: stock[p.id] ?? 0 }))
+    .map((p, i) => ({ p, i, mat: materialCost(p, s.materials), cost: costOf(p, s.materials), stock: stock[p.id] ?? 0, sapo: sapoStock(p) }))
     .filter(r => status === "all" || r.p.status === status)
-    .filter(r => matches(q, r.p.sku, r.p.name, r.p.variants?.map(v => `${v.sku} ${v.size}`).join(" "), r.p.bom.map(l => s.materials.find(m => m.id === l.material)?.name).join(" ")))
+    .filter(r => !cat || r.p.category === cat)
+    .filter(r => matches(q, r.p.sku, r.p.name, r.p.category, r.p.brand, r.p.tags?.join(" "),
+      r.p.variants?.map(v => `${v.sku} ${v.barcode ?? ""} ${v.size} ${v.color ?? ""}`).join(" "), r.p.bom.map(l => s.materials.find(m => m.id === l.material)?.name).join(" ")))
     .sort((a, b) =>
       sort === "name" ? a.p.name.localeCompare(b.p.name, "vi")
       : sort === "sku" ? a.p.sku.localeCompare(b.p.sku, "vi", { numeric: true })
-      : sort === "cost" ? (b.mat + b.p.laborCost) - (a.mat + a.p.laborCost)
+      : sort === "cost" ? b.cost - a.cost
+      : sort === "stock" ? b.sapo + b.stock - (a.sapo + a.stock)
       : b.i - a.i); // mới thêm lên đầu
   const shown = rows.slice(0, limit);
   const count = (k: "all" | ItemStatus) => s.products.filter(p => k === "all" || p.status === k).length;
@@ -314,7 +320,7 @@ export default function ProductsPage() {
       <PageHeader
         eyebrow={<>Phân hệ kho <span className="text-subtle">/</span> <span className="text-subtle">Sản phẩm</span></>}
         title="Sản phẩm & giá vốn"
-        desc="Giá vốn = phụ liệu theo định mức × giá bình quân + tiền công may. Bấm vào một dòng để xem định mức."
+        desc="Đồng bộ từ Sapo (ảnh, phiên bản, tồn, bảng giá). Giá vốn = định mức phụ liệu + tiền công; mẫu chưa khai báo định mức tạm lấy giá nhập Sapo. Bấm một dòng để xem chi tiết."
         aside={
           <div className="grid w-full grid-cols-3 gap-2 min-[1500px]:w-auto">
             <StatCard className="min-[1500px]:min-w-[110px]" label="Sản phẩm" value={s.products.length} unit="mã" tone="brand" />
@@ -329,7 +335,7 @@ export default function ProductsPage() {
       <Panel
         title="Danh sách sản phẩm" icon={Shirt} flush
         tag={<span className="num text-xs text-subtle">{rows.length} / {s.products.length}</span>}
-        actions={<SearchBox value={q} onChange={v => { setQ(v); setLimit(PAGE); }} placeholder="Tìm SKU, SKU size, tên, phụ liệu…" label="Tìm sản phẩm" />}
+        actions={<SearchBox value={q} onChange={v => { setQ(v); setLimit(PAGE); }} placeholder="Tìm tên, SKU, barcode, màu, loại…" label="Tìm sản phẩm" />}
       >
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3 pb-2 md:px-5">
           <div role="group" aria-label="Lọc tình trạng" className="flex gap-1 overflow-x-auto">
@@ -341,6 +347,16 @@ export default function ProductsPage() {
               </button>
             ))}
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+          {cats.length > 0 && (
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              Loại
+              <select className="field-input !min-h-8 !w-40 !bg-surface !py-1 text-xs" value={cat} onChange={e => { setCat(e.target.value); setLimit(PAGE); }}>
+                <option value="">Tất cả loại</option>
+                {cats.map(c => <option key={c} value={c}>{c} ({s.products.filter(p => p.category === c).length})</option>)}
+              </select>
+            </label>
+          )}
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             Sắp xếp
             <select className="field-input !min-h-8 !w-36 !bg-surface !py-1 text-xs" value={sort} onChange={e => setSort(e.target.value as SortKey)}>
@@ -348,8 +364,10 @@ export default function ProductsPage() {
               <option value="name">Tên A → Z</option>
               <option value="sku">SKU</option>
               <option value="cost">Giá vốn cao → thấp</option>
+              <option value="stock">Tồn nhiều → ít</option>
             </select>
           </label>
+          </div>
         </div>
 
         <TableWrap>
@@ -357,12 +375,12 @@ export default function ProductsPage() {
             <thead>
               <tr>
                 <th className="w-8" />
-                <th>SKU</th><th>Sản phẩm</th><th>Size</th><th className="r">Phụ liệu</th><th className="r">Tiền công</th>
-                <th className="r">Giá vốn / cái</th><th className="r">Tồn TP</th><th>Tình trạng</th>
+                <th className="w-12">Ảnh</th><th>Sản phẩm</th><th>Loại</th><th>Nhãn hiệu</th>
+                <th className="r">Tồn kho</th><th className="r">Giá bán lẻ</th><th className="r">Giá vốn / cái</th><th>Tình trạng</th>
               </tr>
             </thead>
             <tbody>
-              {shown.length ? shown.map(({ p, mat, stock: st }) => {
+              {shown.length ? shown.map(({ p, mat, cost, stock: st, sapo }) => {
                 const isOpen = open === p.id;
                 return (
                   <Fragment key={p.id}>
@@ -377,17 +395,23 @@ export default function ProductsPage() {
                           <ChevronRight className={cn("size-4 transition-transform duration-200", isOpen && "rotate-90")} />
                         </button>
                       </td>
-                      <td className="num font-bold whitespace-nowrap text-brand">{p.sku}</td>
-                      <td className="font-serif font-medium">{p.name}</td>
-                      <td className="whitespace-nowrap">
-                        {p.variants?.length
-                          ? <span className="flex gap-1">{p.variants.map(v => <span key={v.size} title={`SKU ${v.sku}`} className="rounded bg-surface-2 px-1.5 text-[11.5px] font-semibold text-brand">{v.size}</span>)}</span>
-                          : <span className="text-xs text-subtle">—</span>}
+                      <td className="!py-1.5"><ProductThumb p={p} /></td>
+                      <td className="min-w-[180px]">
+                        <div className="font-serif font-medium">{p.name}</div>
+                        <div className="num text-[11.5px] text-subtle">{p.variants?.[0]?.sku ?? p.sku}{p.variants && p.variants.length > 1 && ` · ${p.variants.length} phiên bản`}</div>
                       </td>
-                      <td className="r num">{p.bom.length}</td>
-                      <td className="r num">{vnd(p.laborCost)}</td>
-                      <td className="r num font-semibold text-brand">{vnd(mat + p.laborCost)}</td>
-                      <td className="r num">{nf(st)}</td>
+                      <td className="text-[12.5px] whitespace-nowrap">{p.category ?? <span className="text-subtle">—</span>}</td>
+                      <td className="text-[12.5px] text-muted-foreground">{p.brand ?? ""}</td>
+                      <td className="r num">
+                        <b>{nf(p.source === "sapo" ? sapo : st)}</b>
+                        {!!p.variants?.length && <div className="text-[11px] font-normal text-subtle">({p.variants.length} phiên bản)</div>}
+                        {p.source === "sapo" && st > 0 && <div className="text-[11px] font-normal text-ok" title="Đã nhập kho thành phẩm từ sản xuất trên web">+{nf(st)} SX</div>}
+                      </td>
+                      <td className="r num whitespace-nowrap">{fmtRange(priceRange(p.variants?.map(v => v.price) ?? []))}</td>
+                      <td className="r num whitespace-nowrap">
+                        <b className="text-brand">{vnd(cost)}</b>
+                        <div className={cn("text-[11px] font-normal", p.bom.length ? "text-subtle" : "text-warn")}>{p.bom.length ? `định mức ${vnd(mat)} + công` : "giá nhập Sapo · chưa định mức"}</div>
+                      </td>
                       <td onClick={e => e.stopPropagation()}>
                         <StatusSelect id={`ps-${p.id}`} value={p.status} labels={PRODUCT_STATUS} editable={manage} onChange={v => changeStatus(p.id, v)} />
                       </td>
@@ -396,7 +420,10 @@ export default function ProductsPage() {
                       <tr className="hover:!bg-transparent">
                         <td />
                         <td colSpan={8} className="!pt-0">
-                          <ProductDetail p={p} mat={mat} stock={st} />
+                          <div className="flex flex-col gap-3">
+                            <SapoVariants p={p} />
+                            <ProductDetail p={p} mat={mat} stock={st} />
+                          </div>
                         </td>
                       </tr>
                     )}

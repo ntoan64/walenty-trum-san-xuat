@@ -23,6 +23,9 @@ const cellNum = (v: unknown) => {
   return isFinite(n) && cellText(v) !== "" ? n : undefined;
 };
 
+// "LC_CN2_Tồn kho ban đầu*" → "CN2"
+const branchOf = (h: string) => /^LC_(.+?)_/i.exec(h)?.[1] ?? h.replace(/tồn kho.*/i, "").trim();
+
 // Bảng gốc giữ nguyên tiêu đề cột và giá trị như trong file
 export type SapoCell = string | number | null;
 export interface SapoSheet { columns: string[]; rows: SapoCell[][]; items: SapoItem[] }
@@ -75,7 +78,7 @@ export async function parseSapoFile(file: File): Promise<SapoSheet> {
     "Không phải file xuất sản phẩm của Sapo (thiếu cột Tên sản phẩm / Mã SKU)");
   const rows = data.map(d => d.raw);
   const col = (re: RegExp) => header.findIndex(h => re.test(h));
-  const cName = col(/^tên sản phẩm/i), cType = col(/^loại sản phẩm/i), cTags = col(/^tags$/i);
+  const cName = col(/^tên sản phẩm/i), cType = col(/^loại sản phẩm/i), cTags = col(/^tags$/i), cBrand = col(/^nhãn hiệu$/i);
   const cSku = col(/^mã sku/i), cBarcode = col(/^barcode/i), cImg = col(/^ảnh đại diện/i);
   const cAttr = [1, 2, 3].map(i => ({ name: col(new RegExp(`^thuộc tính ${i}$`, "i")), value: col(new RegExp(`^giá trị thuộc tính ${i}$`, "i")) }));
   const cStock = header.map((h, i) => (/tồn kho/i.test(h) && !/tối/i.test(h) ? i : -1)).filter(i => i > 0);
@@ -89,6 +92,7 @@ export async function parseSapoFile(file: File): Promise<SapoSheet> {
       cur = {
         name,
         category: cellText(v[cType]) || undefined,
+        brand: cBrand > 0 ? cellText(v[cBrand]) || undefined : undefined,
         tags: cellText(v[cTags]).split(",").map(t => t.trim()).filter(Boolean),
         variants: [],
         attrNames: cAttr.map(a => (a.name > 0 ? cellText(v[a.name]) : "")),
@@ -110,7 +114,8 @@ export async function parseSapoFile(file: File): Promise<SapoSheet> {
     for (const i of cPrices) {
       const n = cellNum(v[i]);
       const label = header[i].replace(/^PL_/i, "").trim();
-      if (n && !/^giá (bán lẻ|nhập)$/i.test(label)) prices[label] = n;
+      // giữ cả giá 0 (vd Giá bán buôn = 0) để hiện đủ như Sapo
+      if (n !== undefined && !/^giá (bán lẻ|nhập)$/i.test(label)) prices[label] = n;
     }
     const variant: ProductVariant = {
       size: size || "F",
@@ -119,11 +124,12 @@ export async function parseSapoFile(file: File): Promise<SapoSheet> {
       barcode: cellText(v[cBarcode]) || undefined,
       image: cellText(v[cImg]) || undefined,
       stock: cStock.reduce((t, i) => t + (cellNum(v[i]) ?? 0), 0),
+      stocks: cStock.length > 1 ? Object.fromEntries(cStock.map(i => [branchOf(header[i]), cellNum(v[i]) ?? 0])) : undefined,
       price: cellNum(v[header.findIndex(h => /^PL_Giá bán lẻ$/i.test(h))]),
       cost: cellNum(v[header.findIndex(h => /^PL_Giá nhập$/i.test(h))]),
       prices: Object.keys(prices).length ? prices : undefined,
     };
     cur.variants.push(variant);
   }
-  return { columns, rows, items: items.filter(i => i.variants.length).map(({ name, category, tags, variants }) => ({ name, category, tags, variants })) };
+  return { columns, rows, items: items.filter(i => i.variants.length).map(({ name, category, brand, tags, variants }) => ({ name, category, brand, tags, variants })) };
 }

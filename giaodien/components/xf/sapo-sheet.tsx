@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FileSpreadsheet, Loader2, Upload } from "lucide-react";
+import { FileSpreadsheet, Loader2, Table2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useStore, A } from "@/lib/store";
@@ -13,6 +13,7 @@ import { exportExcel, excelName } from "@/lib/excel";
 import { useConfirm, Summary } from "./confirm-provider";
 import { EmptyState, Panel } from "./basics";
 import { SearchBox } from "./search-box";
+import { PurchaseOrders } from "./sapo-purchase";
 
 type Sheet = { columns: string[]; rows: SapoCell[][]; fileName: string; importedAt: string; by: string; version: number };
 type Kind = "products" | "purchase";
@@ -44,6 +45,17 @@ const CONF: Record<Kind, { title: string; button: string; empty: string; group: 
   },
 };
 
+// Đọc bảng Sapo ở trang khác (vd Thống kê), dùng chung bộ nhớ đệm
+export function useSapoSheet(kind: Kind) {
+  const [sheet, setSheet] = useState<Sheet | null>(cached[kind]);
+  useEffect(() => {
+    let alive = true;
+    loadSheet(kind).then(x => { if (alive) setSheet(x); }).catch(() => {});
+    return () => { alive = false; };
+  }, [kind]);
+  return sheet;
+}
+
 const PAGE = 50;
 const show = (x: SapoCell) => (x == null ? "" : typeof x === "number" ? nf(x, 4) : x);
 
@@ -58,6 +70,8 @@ export function SapoSheetPanel({ kind = "products" }: { kind?: Kind }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [limit, setLimit] = useState(PAGE);
+  // mặc định xem dạng gọn; "Bảng gốc" = đúng cột, đúng dòng như file Excel
+  const [raw, setRaw] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -146,11 +160,16 @@ export function SapoSheetPanel({ kind = "products" }: { kind?: Kind }) {
       tag={sheet ? <span className="num text-xs text-subtle">{nf(rows.length)} / {nf(sheet.rows.length)} dòng</span> : undefined}
       actions={
         <div className="flex flex-wrap items-center gap-2">
-          {sheet && <SearchBox value={q} onChange={v => { setQ(v); setLimit(PAGE); }} placeholder={cf.search} label="Tìm trong bảng Sapo" />}
+          {sheet && (raw || kind === "purchase") && <SearchBox value={q} onChange={v => { setQ(v); setLimit(PAGE); }} placeholder={cf.search} label="Tìm trong bảng Sapo" />}
           <input ref={fileRef} type="file" accept=".xlsx" className="sr-only" onChange={e => { pick(e.target.files?.[0]); e.target.value = ""; }} />
           <Button variant="secondary" onClick={() => fileRef.current?.click()} disabled={!!busy}>
             {busy ? <Loader2 className="animate-spin" /> : <Upload />} {busy ?? cf.button}
           </Button>
+          {sheet && (
+            <Button variant={raw ? "default" : "secondary"} onClick={() => setRaw(!raw)} aria-pressed={raw} title="Xem đúng cột, đúng dòng như file Excel">
+              <Table2 /> {raw ? "Đang xem bảng gốc" : "Bảng gốc"}
+            </Button>
+          )}
           {sheet && <Button variant="secondary" onClick={exportSheet} disabled={!!busy}><FileSpreadsheet /> Xuất Excel</Button>}
         </div>
       }
@@ -160,8 +179,11 @@ export function SapoSheetPanel({ kind = "products" }: { kind?: Kind }) {
       ) : (
         <>
           <p className="px-4 pt-3 text-xs text-muted-foreground md:px-5">
-            File <b>{sheet.fileName}</b> · nhập lúc {fmtDT(new Date(sheet.importedAt))} bởi {sheet.by} · {sheet.columns.length} cột
+            File <b>{sheet.fileName}</b> · nhập lúc {fmtDT(new Date(sheet.importedAt))} bởi {sheet.by} · {sheet.columns.length} cột, {nf(sheet.rows.length)} dòng
+            {!raw && kind === "products" && <> · đã đồng bộ vào <b className="text-fg">Danh sách sản phẩm</b> bên dưới (ảnh, phiên bản, tồn, đủ bảng giá)</>}
           </p>
+          {!raw && kind === "purchase" ? <PurchaseOrders columns={sheet.columns} rows={sheet.rows} q={q} products={s.products} />
+          : !raw ? null : <>
           <div className="mt-2 max-h-[560px] overflow-auto border-t border-line">
             <table className="w-max min-w-full border-collapse text-[12.5px]">
               <thead className="sticky top-0 z-10 bg-surface-3">
@@ -189,6 +211,8 @@ export function SapoSheetPanel({ kind = "products" }: { kind?: Kind }) {
               <Button variant="secondary" size="sm" onClick={() => setLimit(limit + PAGE)}>Xem thêm {Math.min(PAGE, rows.length - limit)} dòng</Button>
             </div>
           )}
+          </>}
+          {!raw && kind === "products" && <div className="h-3" />}
         </>
       )}
     </Panel>

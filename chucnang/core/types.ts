@@ -79,7 +79,8 @@ export interface ProductVariant {
   cost?: number // giá nhập (Sapo)
   image?: string // link ảnh (Sapo)
   stock?: number // tồn kho trên Sapo (cộng các chi nhánh) lúc nhập file
-  prices?: Record<string, number> // các bảng giá khác: EOSS, TMĐT, Shopee…
+  stocks?: Record<string, number> // tồn theo chi nhánh Sapo (CN1, CN2…)
+  prices?: Record<string, number> // các bảng giá khác: bán buôn, EOSS, TMĐT, Shopee…
 }
 
 export interface Product {
@@ -91,7 +92,9 @@ export interface Product {
   variants?: ProductVariant[]
   category?: string // loại sản phẩm (BLAZER, QUẦN…)
   tags?: string[] // vd "Không nhận sửa - custom"
+  brand?: string // nhãn hiệu (Sapo)
   source?: "sapo"
+  syncedAt?: Date // lần đồng bộ Sapo gần nhất
   status: ItemStatus
 }
 
