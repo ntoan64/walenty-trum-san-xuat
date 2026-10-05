@@ -29,3 +29,21 @@ cd chucnang && npm install && npm test        # test nghiệp vụ
 | Xưởng Bot (xem, soạn tin) | ✓ | ✓ | ✗ |
 | Cấp tài khoản / mật khẩu | ✓ | | |
 | Lịch sử thao tác | mọi người | mọi người | của mình |
+
+## Test
+
+```bash
+npm test                      # test nghiệp vụ (nhanh, không cần mạng)
+cd chucnang && npm run test:full   # test toàn bộ luồng trên MongoDB, database riêng <tên>_test, chạy xong tự xóa
+```
+
+## Deploy lên Vercel
+
+1. Đẩy repo này lên GitHub (repo **private**).
+2. Vercel → **Add New → Project** → chọn repo.
+3. **Root Directory**: `giaodien` (Framework: Next.js; để mặc định Build/Install command). Bật **Include files outside the root directory** nếu Vercel hỏi.
+4. **Environment Variables**: `MONGODB_URI` (copy từ `chucnang/.env`), tùy chọn `ADMIN_PASSWORD`.
+5. MongoDB Atlas → **Network Access** → thêm `0.0.0.0/0` (Vercel không có IP cố định).
+6. Deploy. Vùng chạy đã đặt `sin1` (Singapore) trong `giaodien/vercel.json`, gần cụm Atlas.
+
+Lưu ý: giới hạn chống spam đang lưu trong bộ nhớ từng máy chủ; trên Vercel mỗi máy đếm riêng (vẫn chặn được spam thông thường).
