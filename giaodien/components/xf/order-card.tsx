@@ -36,12 +36,13 @@ export function OrderCard({ s, o, now }: { s: DataState; o: ProductionOrder; now
         <span className="num text-[12px] font-bold text-brand">{o.code}</span>
         {o.cancelled ? <StatusPill tone="bad">Đã hủy</StatusPill> : <StatusPill tone="muted">Hạn {fmtD(o.dueAt)}</StatusPill>}
       </div>
-      <div className="font-serif leading-snug font-semibold">{prodOf(s, o).name}</div>
+      <div className="font-serif leading-snug font-semibold">{prodOf(s, o).name}{o.color && <span className="font-sans text-xs font-normal text-muted-foreground"> · {o.color}</span>}</div>
       <div className="text-xs text-muted-foreground">
         {wsName(s, o.workshop)} · <span className="num">{o.qty}</span> cái
       </div>
       {o.step !== "cut" && <BalanceBar qty={o.qty} b={b} />}
-      {o.step === "cut" && (() => {
+      {o.step === "cut" && o.pendingIssue && !o.cancelled && <StatusPill tone="warn" dot>Chưa xuất phụ liệu</StatusPill>}
+      {o.step === "cut" && !o.pendingIssue && (() => {
         const prep = issuedFor(s, o);
         return prep.length ? (
           <div className="rounded-md bg-surface-2 px-2 py-1.5 text-[11.5px] leading-relaxed">

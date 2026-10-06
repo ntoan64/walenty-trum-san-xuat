@@ -1,7 +1,7 @@
 // Thao tác nghiệp vụ, chạy ở cả trình duyệt (kiểm tra trước) và server (ghi MongoDB).
 // Mỗi hàm nhận bản nháp state (đã clone) và sửa trực tiếp; trả lỗi thì bản nháp bị bỏ.
 import {
-  applyImport, applyIssue, byId, calcBalance, canClose, DAY, REPAIR_DUE_DAYS,
+  applyImport, applyIssue, byId, round2, calcBalance, canClose, DAY, REPAIR_DUE_DAYS,
   MATERIAL_CATEGORIES, MATERIAL_STATUS, nextMaterialCode, colorsOf, forColor, costBreakdown, okLevel, isLive, PRODUCT_STATUS, needFor, shortages, unitCost, unusableMaterials, sizeProgress, validateDefectLines, validateQC, validateRequc,
   type BomLine, type Costing, type WorkshopRate, type DefectLine, type EventType, type SizeQty, type ItemStatus, type Material, type MaterialCategory, type ProductionOrder, type ProductVariant, type Role, type Action,
 } from "./index";
@@ -382,6 +382,17 @@ export function setVariantPrice(c: Ctx, productId: string, sku: string, a: { pri
   return ok(`${p.name} · ${sku}: giá bán ${vnd(a.price)}, giá nhập ${vnd(a.cost)}`);
 }
 
+// Tỉ lệ cost mong muốn (vd 32%) của bảng tính giá; color: màu đang xem (có bảng riêng thì sửa bảng màu đó)
+export function setCostRatio(c: Ctx, productId: string, a: { ratio: number; color?: string }): Result {
+  const p = byId(c.s.products, productId);
+  if (!p) return fail("Không tìm thấy sản phẩm");
+  if (!(a.ratio > 0 && a.ratio < 1)) return fail("Tỉ lệ phải từ 1% đến 99%");
+  const key = a.color && p.costing?.[a.color] ? a.color : "";
+  const cur = p.costing?.[key] ?? { labor: p.laborCost };
+  p.costing = { ...(p.costing ?? {}), [key]: { ...cur, ratio: Math.round(a.ratio * 1000) / 1000 } };
+  return ok(`${p.name}${key ? ` (${key})` : ""}: tỉ lệ cost mục tiêu ${Math.round(a.ratio * 1000) / 10}%`);
+}
+
 export function setProductBom(c: Ctx, id: string, a: { laborCost: number; bom: BomLine[]; color?: string }): Result {
   const p = byId(c.s.products, id);
   if (!p) return fail("Không tìm thấy sản phẩm");
@@ -600,7 +611,7 @@ export function sendMessage(c: Ctx, a: { userIds: string[]; text: string }): Res
 }
 
 /* ---------- lệnh sản xuất ---------- */
-export function createOrder(c: Ctx, a: { productId: string; workshopId: string; sizes: SizeQty[]; dueDate: string; color?: string }): Result {
+export function createOrder(c: Ctx, a: { productId: string; workshopId: string; sizes: SizeQty[]; dueDate: string; color?: string; code?: string; group?: string }): Result {
   const sizes = a.sizes.map(x => ({ size: x.size.trim().toUpperCase(), qty: x.qty })).filter(x => x.size && x.qty);
   if (!sizes.length) return fail("Nhập số lượng ít nhất 1 size");
   if (sizes.some(x => !isInt(x.qty) || x.qty < 0)) return fail("Số lượng mỗi size phải là số nguyên");
@@ -630,29 +641,72 @@ export function createOrder(c: Ctx, a: { productId: string; workshopId: string; 
   if (isNaN(dueAt.getTime())) return fail("Ngày dự kiến không hợp lệ");
   if (dueAt < c.now) return fail("Ngày dự kiến phải từ hôm nay trở đi");
   if (dueAt.getTime() > c.now.getTime() + LIMITS.dueDays * DAY) return fail("Ngày dự kiến quá xa (tối đa 1 năm)");
-  if (shortages(p, qty, c.s.materials).length) return fail("Không đủ phụ liệu, cần nhập thêm trước khi tạo lệnh");
-  const code = `LSX-${String(c.s.seq.order++).padStart(4, "0")}`;
+  const code = a.code ?? `LSX-${String(c.s.seq.order++).padStart(4, "0")}`;
   const o: ProductionOrder = {
-    id: code, code, product: p.id, workshop: a.workshopId, qty, sizes, color, step: "cut",
+    id: code, code, product: p.id, workshop: a.workshopId, qty, sizes, color, step: "cut", pendingIssue: true, ...(a.group ? { group: a.group } : {}),
     unitCost: unitCost(p0, c.s.materials, color), loss: 0, lossApproved: false, batches: [],
     createdBy: c.me, createdAt: c.now, dueAt,
   };
   o.labor = costBreakdown(p0, c.s.materials, color).labor;
   c.s.orders.push(o);
   syncProductCost(c, o);
-  const need = needFor(p, qty, c.s.materials);
-  for (const n of need) {
-    applyIssue(n.material, n.qty);
-    c.s.materialTxns.push({ id: uid(c, "t"), material: n.material.id, type: "out", qty: n.qty, order: code, stockAfter: n.material.stock, avgAfter: n.material.avgPrice, by: c.me, at: tick(c) });
+  if (!a.group) notify(c, ["quanly", "kho"], `🆕 Lệnh ${code}: ${p.name} × ${qty} (${sizes.map(x => `${x.size}:${x.qty}`).join(" ")})\nGiao ${wsName(c.s, a.workshopId)}, hạn ${fmtD(o.dueAt)}.\nChờ kho xuất phụ liệu.`);
+  return ok(`Đã tạo ${code}, chờ xuất phụ liệu`, code);
+}
+
+// 1 lệnh = 1 xưởng, nhiều sản phẩm: mỗi sản phẩm (màu) là 1 dòng LSX-0005-1, -2…; 1 sản phẩm thì giữ LSX-0005
+export function createOrders(c: Ctx, a: { workshopId: string; dueDate: string; items: { productId: string; color?: string; sizes: SizeQty[] }[] }): Result {
+  const items = (a.items ?? []).filter(x => x.productId);
+  if (!items.length) return fail("Thêm ít nhất 1 sản phẩm");
+  if (items.length > LIMITS.lines) return fail(`Một lệnh tối đa ${LIMITS.lines} sản phẩm`);
+  const keys = items.map(x => `${x.productId}|${x.color ?? ""}`);
+  if (new Set(keys).size !== keys.length) return fail("Một sản phẩm (cùng màu) bị thêm 2 lần");
+  const group = `LSX-${String(c.s.seq.order++).padStart(4, "0")}`;
+  const lines: string[] = [];
+  for (const [i, it] of items.entries()) {
+    const code = items.length > 1 ? `${group}-${i + 1}` : group;
+    const r = createOrder(c, { ...it, workshopId: a.workshopId, dueDate: a.dueDate, code, ...(items.length > 1 ? { group } : {}) });
+    if (!r.ok) return fail(items.length > 1 ? `Dòng ${i + 1}: ${r.error}` : r.error);
+    const o = byId(c.s.orders, code)!;
+    lines.push(`${prodOf(c.s, o).name}${o.color ? ` ${o.color}` : ""} × ${o.qty}`);
   }
-  notify(c, ["quanly", "kho"], `🆕 Lệnh ${code}: ${p.name} × ${qty} (${sizes.map(x => `${x.size}:${x.qty}`).join(" ")})\nGiao ${wsName(c.s, a.workshopId)} cắt + may, hạn ${fmtD(o.dueAt)}.\nKho đã xuất phụ liệu theo định mức.`);
-  need.forEach(n => checkLow(c, n.material));
-  return ok(`Đã tạo ${code} và xuất phụ liệu`, code);
+  if (items.length > 1) notify(c, ["quanly", "kho"], `🆕 Lệnh ${group} (${items.length} sản phẩm) giao ${wsName(c.s, a.workshopId)}:\n${lines.join("\n")}\nChờ kho xuất phụ liệu.`);
+  return ok(`Đã tạo ${group}${items.length > 1 ? ` (${items.length} sản phẩm)` : ""}, chờ xuất phụ liệu`, items.length > 1 ? `${group}-1` : group);
+}
+
+// Xuất phụ liệu cho các dòng lệnh chưa xuất (thường là cả lệnh); thiếu mã nào thì báo, không trừ gì
+export function issueMaterials(c: Ctx, orderIds: string[]): Result {
+  const orders = (orderIds ?? []).map(id => getOrder(c, id)).filter((o): o is ProductionOrder => !!o && !!o.pendingIssue);
+  if (!orders.length) return fail("Không có dòng lệnh nào chờ xuất phụ liệu");
+  const total = new Map<string, number>();
+  const per = orders.map(o => {
+    const p = forColor(prodOf(c.s, o), o.color);
+    if (!p.bom.length) return { o, need: [] as { material: Material; qty: number }[], noBom: true };
+    const need = needFor(p, o.qty, c.s.materials);
+    for (const n of need) total.set(n.material.id, (total.get(n.material.id) ?? 0) + n.qty);
+    return { o, need, noBom: false };
+  });
+  const nb = per.filter(x => x.noBom);
+  if (nb.length) return fail(`${nb.map(x => x.o.code).join(", ")} chưa có định mức phụ liệu`);
+  const short = [...total].map(([id, q]) => ({ m: byId(c.s.materials, id)!, q: round2(q) })).filter(x => x.q > x.m.stock);
+  if (short.length) return fail(`Không đủ phụ liệu: ${short.map(x => `${x.m.code} cần ${nf(x.q, 1)}, còn ${nf(x.m.stock, 1)} ${x.m.unit}`).join("; ")}`);
+  for (const { o, need } of per) {
+    for (const n of need) {
+      applyIssue(n.material, n.qty);
+      c.s.materialTxns.push({ id: uid(c, "t"), material: n.material.id, type: "out", qty: n.qty, order: o.code, stockAfter: n.material.stock, avgAfter: n.material.avgPrice, by: c.me, at: tick(c) });
+    }
+    o.pendingIssue = false; o.issuedAt = c.now; o.issuedBy = c.me;
+  }
+  for (const id of total.keys()) checkLow(c, byId(c.s.materials, id)!);
+  const name = orders[0].group ?? orders.map(o => o.code).join(", ");
+  notify(c, ["quanly", "kho"], `📤 Đã xuất phụ liệu cho ${name}: ${[...total].map(([id, q]) => { const m = byId(c.s.materials, id)!; return `${m.code} ${nf(q, 1)} ${m.unit}`; }).join(", ")}.`);
+  return ok(`Đã xuất phụ liệu cho ${orders.length} dòng lệnh`);
 }
 
 export function confirmCut(c: Ctx, orderId: string): Result {
   const o = getOrder(c, orderId);
   if (!o || o.step !== "cut") return fail("Lệnh không ở bước chờ cắt");
+  if (o.pendingIssue) return fail("Chưa xuất phụ liệu cho lệnh này, bấm Xuất phụ liệu trước");
   o.step = "sew";
   event(c, "issue", o, o.qty);
   notify(c, ["quanly", "kho"], `✂️ ${o.code}: ${wsName(c.s, o.workshop)} đã cắt xong ${o.qty} cái, bắt đầu may.`);
@@ -857,6 +911,7 @@ export function editOrder(c: Ctx, id: string, a: { workshopId?: string; dueDate?
       // xuất thêm / hoàn lại phần chênh lệch phụ liệu theo định mức
       const p = forColor(prodOf(c.s, o), o.color);
       const deltas = p.bom.map(b => ({ m: byId(c.s.materials, b.material)!, d: Math.round(b.qtyPerUnit * (qty - o.qty) * 100) / 100 }));
+      if (o.pendingIssue) deltas.length = 0; // chưa xuất phụ liệu: chỉ đổi số lượng
       const short = deltas.filter(x => x.d > 0 && x.d > x.m.stock);
       if (short.length) return fail(`Không đủ phụ liệu để tăng số lượng: ${short.map(x => `${x.m.code} cần thêm ${nf(x.d, 1)}, còn ${nf(x.m.stock, 1)}`).join("; ")}`);
       for (const { m, d } of deltas) {
@@ -1013,6 +1068,9 @@ export const ACTIONS: Record<string, [Action | null, (c: Ctx, ...args: any[]) =>
   setVariantPrice: ["product.manage", setVariantPrice, "Sửa giá phiên bản"],
   setMaterialImage: ["material.manage", setMaterialImage, "Ảnh phụ liệu"],
   setOrderCost: ["order.create", setOrderCost, "Chỉnh giá vốn lệnh"],
+  createOrders: ["order.create", createOrders, "Tạo lệnh sản xuất"],
+  issueMaterials: ["order.create", issueMaterials, "Xuất phụ liệu cho lệnh"],
+  setCostRatio: ["product.manage", setCostRatio, "Sửa tỉ lệ cost mục tiêu"],
   setProductBom: ["product.manage", setProductBom, "Sửa định mức sản phẩm"],
   createOrder: ["order.create", createOrder, "Tạo lệnh sản xuất"],
   confirmCut: ["order.cut", confirmCut, "Xác nhận đã cắt"],

@@ -34,12 +34,12 @@ async function loadSheet(kind: Kind): Promise<Sheet | null> {
 // Cấu hình từng loại file Sapo
 const CONF: Record<Kind, { title: string; button: string; empty: string; group: RegExp; search: string; exportName: string; sheetName: string }> = {
   products: {
-    title: "Danh sách sản phẩm (đúng file Sapo)", button: "Nhập file Sapo", group: /^tên sản phẩm/i,
+    title: "Đồng bộ Sapo", button: "Nhập file Sapo", group: /^tên sản phẩm/i,
     empty: "Chưa có bảng. Vào Sapo → Sản phẩm → Xuất file, rồi bấm “Nhập file Sapo”.",
     search: "Tìm tên, SKU, màu, size…", exportName: "san-pham-sapo", sheetName: "Xuất file sản phẩm",
   },
   purchase: {
-    title: "Đơn đặt hàng nhập (đúng file Sapo)", button: "Nhập file đơn đặt hàng", group: /^mã đơn đặt hàng$/i,
+    title: "Đơn đặt hàng nhập", button: "Nhập file đơn đặt hàng", group: /^mã đơn đặt hàng$/i,
     empty: "Chưa có bảng. Vào Sapo → Đơn đặt hàng nhập → Xuất file (chi tiết), rồi bấm “Nhập file đơn đặt hàng”.",
     search: "Tìm mã đơn, xưởng, SKU, trạng thái…", exportName: "don-dat-hang-nhap-sapo", sheetName: "Đơn đặt hàng nhập",
   },
@@ -157,7 +157,7 @@ export function SapoSheetPanel({ kind = "products" }: { kind?: Kind }) {
   return (
     <Panel
       title={cf.title} icon={FileSpreadsheet} flush
-      tag={sheet ? <span className="num text-xs text-subtle">{nf(rows.length)} / {nf(sheet.rows.length)} dòng</span> : undefined}
+      tag={sheet && raw ? <span className="num text-xs text-subtle">{nf(rows.length)} / {nf(sheet.rows.length)} dòng</span> : undefined}
       actions={
         <div className="flex flex-wrap items-center gap-2">
           {sheet && (raw || kind === "purchase") && <SearchBox value={q} onChange={v => { setQ(v); setLimit(PAGE); }} placeholder={cf.search} label="Tìm trong bảng Sapo" />}
@@ -178,10 +178,10 @@ export function SapoSheetPanel({ kind = "products" }: { kind?: Kind }) {
         <EmptyState>{cf.empty}</EmptyState>
       ) : (
         <>
-          <p className="px-4 pt-3 text-xs text-muted-foreground md:px-5">
+          {raw && <p className="px-4 pt-3 text-xs text-muted-foreground md:px-5">
             File <b>{sheet.fileName}</b> · nhập lúc {fmtDT(new Date(sheet.importedAt))} bởi {sheet.by} · {sheet.columns.length} cột, {nf(sheet.rows.length)} dòng
             {!raw && kind === "products" && <> · đã đồng bộ vào <b className="text-fg">Danh sách sản phẩm</b> bên dưới (ảnh, phiên bản, tồn, đủ bảng giá)</>}
-          </p>
+          </p>}
           {!raw && kind === "purchase" ? <PurchaseOrders columns={sheet.columns} rows={sheet.rows} q={q} products={s.products} />
           : !raw ? null : <>
           <div className="mt-2 max-h-[560px] overflow-auto border-t border-line">

@@ -39,6 +39,21 @@ export const hasBom = (p: Product) => p.bom.length > 0 || Object.values(p.bomByC
 // Màu của mẫu (theo phiên bản Sapo)
 export const colorsOf = (p: Product) => [...new Set((p.variants ?? []).map(v => v.color).filter((x): x is string => !!x))]
 
+// Phụ liệu cần chuẩn bị: tổng định mức của các lệnh chưa xuất phụ liệu (không tách theo xưởng)
+export function materialForecast(products: Product[], materials: Material[], orders: { product: string; color?: string; qty: number; cancelled?: unknown; pendingIssue?: boolean }[]) {
+  const need = new Map<string, number>()
+  for (const o of orders) {
+    if (o.cancelled || !o.pendingIssue) continue
+    const p = byId(products, o.product)
+    if (!p) continue
+    for (const b of bomOf(p, o.color)) need.set(b.material, (need.get(b.material) ?? 0) + b.qtyPerUnit * o.qty)
+  }
+  return [...need].map(([id, qty]) => {
+    const m = byId(materials, id)
+    return m ? { material: m, need: round2(qty), short: round2(Math.max(0, qty - m.stock)) } : null
+  }).filter((x): x is { material: Material; need: number; short: number } => !!x).sort((a, b) => b.short - a.short || b.need - a.need)
+}
+
 // Phụ liệu không ở trạng thái "đang dùng" thì không dùng cho lệnh mới
 export function unusableMaterials(product: Product, materials: Material[]) {
   return product.bom.map(b => byId(materials, b.material)!).filter(m => m.status !== "active")

@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { Calculator, Pencil } from "lucide-react";
 import { bomOf, byId, colorsOf, costBreakdown, costRatio, formulaPrice, priceRange, type Product } from "@core";
-import { useStore } from "@/lib/store";
+import { useStore, A } from "@/lib/store";
+import { useAction } from "@/lib/use-action";
 import { nf, pct, vnd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { BomDialog } from "./bom-dialog";
@@ -14,6 +15,30 @@ function Row({ label, sub, value, strong }: { label: React.ReactNode; sub?: Reac
       <td className="px-3 py-1.5">{label}{sub && <div className="text-[11px] text-subtle">{sub}</div>}</td>
       <td className={cn("num px-3 py-1.5 text-right whitespace-nowrap", strong && "font-semibold")}>{vnd(value)}</td>
     </tr>
+  );
+}
+
+// Tỉ lệ cost mục tiêu (%), sửa được
+function TargetRatio({ productId, color, target, editable }: { productId: string; color?: string; target?: number; editable: boolean }) {
+  const act = useAction();
+  const [v, setV] = useState(target ? String(Math.round(target * 1000) / 10) : "");
+  const [busy, setBusy] = useState(false);
+  const n = +v.replace(",", ".") || 0;
+  const changed = Math.abs(n / 100 - (target ?? 0)) > 0.0001;
+  const save = async () => { setBusy(true); await act("product.manage", A.setCostRatio, productId, { ratio: n / 100, color }); setBusy(false); };
+  return (
+    <div className="rounded-lg bg-surface-low p-3">
+      <div className="eyebrow">Tỉ lệ cost mục tiêu</div>
+      {editable ? (
+        <div className="mt-1 flex items-center gap-2">
+          <input aria-label="Tỉ lệ cost mục tiêu (%)" type="number" min={1} max={99} step="0.5" className="field-input num !min-h-9 !w-24 !py-1.5" value={v} onChange={e => setV(e.target.value)} />
+          <span className="text-muted-foreground">%</span>
+          <button type="button" disabled={!changed || busy || !(n > 0 && n < 100)} onClick={save}
+            className={cn("rounded-md px-2.5 py-1 text-xs font-semibold", changed ? "bg-brand text-brand-fg hover:bg-brand-strong" : "text-subtle")}>{changed ? "Lưu" : "✓"}</button>
+        </div>
+      ) : <div className="font-serif text-xl font-bold">{target ? pct(target) : "—"}</div>}
+      <div className="mt-1 text-[11.5px] text-subtle">Dùng tính giá bán theo công thức và so với tỉ lệ thực tế.</div>
+    </div>
   );
 }
 
@@ -105,9 +130,10 @@ export function CostingCard({ p }: { p: Product }) {
               <div className={cn("rounded-lg p-3", target && ratio > target + 0.02 ? "bg-bad-soft" : "bg-surface-low")}>
                 <div className="eyebrow">Tỉ lệ cost thực tế</div>
                 <div className={cn("font-serif text-xl font-bold", target && ratio > target + 0.02 ? "text-bad" : "text-ok")}>{pct(ratio)}</div>
-                <div className="text-[11.5px] text-subtle">giá vốn ÷ (giá bán ÷ 1,08){target ? ` · mục tiêu ${pct(target)}` : ""}</div>
+                <div className="text-[11.5px] text-subtle">giá vốn ÷ (giá bán ÷ 1,08)</div>
               </div>
             ) : null}
+            <TargetRatio key={`${p.id}-${k}-${target ?? ""}`} productId={p.id} color={color} target={target} editable={can("product.manage")} />
             {(c?.rating || c?.updated) && <p className="text-[12px] text-muted-foreground">{c.rating && <>Đánh giá: <b className="text-fg">{c.rating}</b></>}{c.updated && <> · cập nhật {c.updated.split("-").reverse().join("/")}</>}</p>}
           </div>
         </div>

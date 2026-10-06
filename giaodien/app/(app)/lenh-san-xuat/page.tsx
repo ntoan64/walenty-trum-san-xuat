@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ChevronDown, Plus } from "lucide-react";
-import { byId, colorsOf, DAY, forColor, hasBom, isLive, needFor, shortages, sum, unitCost, unusableMaterials, type Product, type Step } from "@core";
+import { ChevronDown, Plus, Trash2 } from "lucide-react";
+import { byId, colorsOf, DAY, forColor, hasBom, isLive, needFor, sum, unitCost, type Product, type Step } from "@core";
 import { Button } from "@/components/ui/button";
 import { useStore, A } from "@/lib/store";
 import { matches } from "@/lib/search";
@@ -27,6 +27,9 @@ const sizesOf = (p: Product | undefined, color?: string) => {
   return list.length ? list : DEFAULT_SIZES;
 };
 
+type Line = { key: number; product: string; color: string; sizes: { size: string; qty: string }[] };
+
+// 1 lệnh = 1 xưởng, nhiều sản phẩm. Tạo lệnh không trừ kho; kho bấm "Xuất phụ liệu" ở trang lệnh mới trừ.
 function CreateOrder() {
   const { data: s, can } = useStore();
   const act = useConfirmAction();
@@ -34,98 +37,73 @@ function CreateOrder() {
   const [open, setOpen] = useDraft("order:open", false);
   const products = s.products.filter(x => x.status === "active");
   const today = isoDateVN(new Date());
-  const [f, setF] = useDraft("order:f", () => ({ product: products[0]?.id ?? "", ws: "", color: "", due: isoDateVN(new Date(Date.now() + 5 * DAY)) }));
-  // Số lượng theo size; thêm size khác (XS, XXL, free size…) bằng ô bên dưới
-  const [sizes, setSizes] = useDraft<{ size: string; qty: string }[]>("order:sizes", () => {
-    const first = products.find(x => x.id === f.product) ?? products[0];
-    return sizesOf(first, colorsOf(first ?? ({} as Product))[0]).map(z => ({ size: z, qty: "" }));
-  });
-  const [extra, setExtra] = useDraft("order:extra", "");
-  const p0 = byId(products, f.product) ?? products[0];
-  const colors = p0 ? colorsOf(p0) : [];
-  const color = colors.includes(f.color ?? "") ? f.color : colors[0];
-  // định mức + giá vốn đúng màu của lệnh
-  const p = p0 ? forColor(p0, color) : p0;
-  const variantOf = (size: string) => p0?.variants?.find(v => v.size === size && (!color || v.color === color));
-  const sizeList = sizes.map(x => ({ size: x.size, qty: Math.floor(+x.qty || 0) })).filter(x => x.qty > 0);
-  const qty = sizeList.reduce((t, x) => t + x.qty, 0);
+  const [f, setF] = useDraft("order:f2", () => ({ ws: "", due: isoDateVN(new Date(Date.now() + 5 * DAY)) }));
+  const [lines, setLines] = useDraft<Line[]>("order:lines", []);
+  const [seq, setSeq] = useDraft("order:lseq", 1);
   const workshops = s.workshops.filter(w => w.active);
   const ws = workshops.find(w => w.id === f.ws) ?? workshops[0];
-  if (!workshops.length) return can("order.create") ? <Panel><EmptyState>Chưa có xưởng nào đang hợp tác. Thêm xưởng ở trang Xưởng may trước khi tạo lệnh.</EmptyState></Panel> : null;
-  if (!p) return can("order.create") ? <Panel><EmptyState>Chưa có sản phẩm nào đang sản xuất. Thêm hoặc mở lại sản phẩm ở trang Sản phẩm & định mức.</EmptyState></Panel> : null;
-  const unusable = unusableMaterials(p, s.materials);
-  const short = qty > 0 ? shortages(p, qty, s.materials) : [];
-  const need = needFor(p, qty, s.materials);
-  const cost = unitCost(p0, s.materials, color);
-  const noBom = !p.bom.length;
   if (!can("order.create")) return null;
+  if (!workshops.length) return <Panel><EmptyState>Chưa có xưởng nào đang hợp tác. Thêm xưởng ở trang Xưởng may trước khi tạo lệnh.</EmptyState></Panel>;
+  if (!products.length) return <Panel><EmptyState>Chưa có sản phẩm nào đang sản xuất. Thêm hoặc mở lại sản phẩm ở trang Sản phẩm & định mức.</EmptyState></Panel>;
 
-  const addSize = () => {
-    const z = extra.trim().toUpperCase();
-    if (z && !sizes.some(x => x.size === z)) setSizes([...sizes, { size: z, qty: "" }]);
-    setExtra("");
+  const set = (key: number, patch: Partial<Line>) => setLines(ls => ls.map(l => (l.key === key ? { ...l, ...patch } : l)));
+  const addLine = (productId: string) => {
+    const p = byId(products, productId);
+    const color = p ? colorsOf(p)[0] ?? "" : "";
+    setLines([...lines, { key: seq, product: productId, color, sizes: sizesOf(p, color).map(z => ({ size: z, qty: "" })) }]);
+    setSeq(seq + 1);
   };
+  // số liệu từng dòng
+  const rows = lines.map(l => {
+    const p0 = byId(products, l.product);
+    const colors = p0 ? colorsOf(p0) : [];
+    const color = colors.includes(l.color) ? l.color : colors[0];
+    const p = p0 ? forColor(p0, color) : undefined;
+    const sizeList = l.sizes.map(x => ({ size: x.size, qty: Math.floor(+x.qty || 0) })).filter(x => x.qty > 0);
+    const qty = sizeList.reduce((t, x) => t + x.qty, 0);
+    const cost = p0 ? unitCost(p0, s.materials, color) : 0;
+    return { l, p0, p, colors, color, sizeList, qty, cost, noBom: !p?.bom.length };
+  });
+  const totalQty = sum(rows, r => r.qty);
+  // dự báo phụ liệu cần chuẩn bị cho cả lệnh (chỉ để xem, chưa trừ kho)
+  const need = new Map<string, number>();
+  for (const r of rows) if (r.p && r.qty) for (const n of needFor(r.p, r.qty, s.materials)) need.set(n.material.id, (need.get(n.material.id) ?? 0) + n.qty);
+  const needList = [...need].map(([id, q]) => ({ m: byId(s.materials, id)!, q })).sort((a, b) => (b.q - b.m.stock) - (a.q - a.m.stock));
+  const valid = rows.filter(r => r.qty > 0);
+  const canSubmit = valid.length > 0 && valid.every(r => !r.noBom);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const r = await act(
       {
-        title: "Tạo lệnh sản xuất?",
-        confirmLabel: "Tạo lệnh",
+        title: "Tạo lệnh sản xuất?", confirmLabel: "Tạo lệnh",
         description: (
-          <Summary rows={[
-            ["Sản phẩm", `${p.name}${color ? ` · ${color}` : ""}`],
-            ["Xưởng", ws.name],
-            ["Theo size", sizeList.map(x => { const v = variantOf(x.size); return `${x.size}${v ? ` (${v.sku})` : ""}: ${x.qty}`; }).join(" · ")],
-            ["Tổng", `${qty} cái`],
-            ["Dự kiến xong", f.due.split("-").reverse().join("/")],
-            ["Xuất kho", need.map(n => `${n.material.code} ${nf(n.qty, 1)} ${n.material.unit}`).join(" · ")],
-            ["Giá vốn", `${vnd(cost)}/cái · tổng ${vnd(cost * qty)}`],
-          ]} />
+          <>
+            <Summary rows={[
+              ["Xưởng", ws.name],
+              ...valid.map(r => [`${r.p0!.name}${r.color ? ` · ${r.color}` : ""}`, `${r.sizeList.map(x => `${x.size}:${x.qty}`).join(" ")} = ${r.qty} cái`] as [string, string]),
+              ["Tổng", `${totalQty} cái`],
+              ["Dự kiến xong", f.due.split("-").reverse().join("/")],
+            ]} />
+            <p className="mt-2 text-xs">Tạo lệnh chưa trừ kho. Khi giao phụ liệu cho xưởng, bấm “Xuất phụ liệu” ở trang lệnh.</p>
+          </>
         ),
       },
-      "order.create", A.createOrder, { productId: p.id, workshopId: ws.id, sizes: sizeList, dueDate: f.due, color },
+      "order.create", A.createOrders, { workshopId: ws.id, dueDate: f.due, items: valid.map(r => ({ productId: r.p0!.id, color: r.color, sizes: r.sizeList })) },
     );
-    if (r?.ok && r.id) router.push(`/lenh-san-xuat/${r.id}`);
+    if (r?.ok) { setLines([]); if (r.id) router.push(`/lenh-san-xuat/${r.id}`); }
   };
 
   return (
     <section className="card overflow-hidden rounded-xl">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between gap-2 bg-surface-low px-4 py-3 text-left md:px-5"
-      >
-        <span className="flex items-center gap-2 font-serif text-[16px] font-semibold text-brand">
-          <Plus className="size-5" /> Tạo lệnh sản xuất mới
-        </span>
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between gap-2 bg-surface-low px-4 py-3 text-left md:px-5">
+        <span className="flex items-center gap-2 font-serif text-[16px] font-semibold text-brand"><Plus className="size-5" /> Tạo lệnh sản xuất mới</span>
         <ChevronDown className={`size-5 text-subtle transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
         <form onSubmit={submit} className="flex flex-col gap-4 p-4 md:p-5">
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] items-end gap-3">
-            <Field label="Sản phẩm" htmlFor="o-prod">
-              <SearchPicker id="o-prod" label="Sản phẩm" placeholder="Gõ tên, SKU để tìm sản phẩm…" value={p.id}
-                items={products.map(x => ({ id: x.id, label: x.name, sub: hasBom(x) ? x.category : "chưa định mức", search: [x.sku, x.category, ...(x.variants ?? []).map(v => v.sku)] }))}
-                onPick={id => {
-                  const np = products.find(x => x.id === id);
-                  const nc = np ? colorsOf(np)[0] ?? "" : "";
-                  setF({ ...f, product: id, color: nc });
-                  // sản phẩm có khai báo size + SKU → lưới số lượng lấy đúng các size đó
-                  setSizes(sizesOf(np, nc).map(z => ({ size: z, qty: "" })));
-                }} />
-            </Field>
-            {colors.length > 1 && (
-              <Field label="Màu" htmlFor="o-color">
-                <select id="o-color" className="field-input" value={color} onChange={e => {
-                  setF({ ...f, color: e.target.value });
-                  setSizes(sizesOf(p0, e.target.value).map(z => ({ size: z, qty: "" })));
-                }}>
-                  {colors.map(c => <option key={c} value={c}>{c}{p0.bomByColor?.[c]?.length || p0.bom.length ? "" : " (chưa định mức)"}</option>)}
-                </select>
-              </Field>
-            )}
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] items-end gap-3">
             <Field label="Xưởng cắt + may" htmlFor="o-ws">
               <SearchPicker id="o-ws" label="Xưởng cắt + may" placeholder="Gõ tên xưởng…" value={ws.id}
                 items={workshops.map(w => ({ id: w.id, label: w.name, sub: w.area, search: [w.contactName, ...(w.aliases ?? [])] }))}
@@ -136,72 +114,56 @@ function CreateOrder() {
             </Field>
           </div>
 
-          <div>
-            <div className="eyebrow mb-1.5">Số lượng theo size</div>
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-2">
-              {sizes.map((x, i) => (
-                <label key={x.size} className="flex flex-col gap-1 rounded-lg bg-surface-2 p-2">
-                  <span className="flex items-center justify-between text-xs font-bold text-brand">
-                    <span>{x.size}{variantOf(x.size) && <span className="num ml-1 font-normal text-subtle">{variantOf(x.size)!.sku}</span>}</span>
-                    {!DEFAULT_SIZES.includes(x.size) && !variantOf(x.size) && (
-                      <button type="button" aria-label={`Bỏ size ${x.size}`} className="text-subtle hover:text-bad" onClick={() => setSizes(sizes.filter((_, j) => j !== i))}>×</button>
-                    )}
-                  </span>
-                  <input type="number" min={0} step={1} inputMode="numeric" placeholder="0" aria-label={`Số lượng size ${x.size}`}
-                    className="field-input num !min-h-9 !bg-surface !py-1.5" value={x.qty}
-                    onChange={e => setSizes(sizes.map((y, j) => (j === i ? { ...y, qty: e.target.value } : y)))} />
-                </label>
-              ))}
-              <div className="flex flex-col gap-1 rounded-lg border border-dashed border-line-strong p-2">
-                <span className="text-xs text-muted-foreground">Size khác</span>
-                <div className="flex gap-1">
-                  <input aria-label="Thêm size" placeholder="XXL" className="field-input !min-h-9 !py-1.5 uppercase" value={extra}
-                    onChange={e => setExtra(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addSize(); } }} />
-                  <button type="button" aria-label="Thêm size" onClick={addSize} className="rounded-md bg-surface-3 px-2 text-brand hover:bg-surface-4"><Plus className="size-4" /></button>
+          <div className="flex flex-col gap-2">
+            <div className="eyebrow">Sản phẩm trong lệnh</div>
+            {rows.map(({ l, p0, colors, color, qty, cost, noBom }, i) => (
+              <div key={l.key} className="row-in flex flex-col gap-2 rounded-lg border border-line bg-surface-low/60 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="num text-xs font-bold text-subtle">{i + 1}.</span>
+                  <b className="font-serif text-brand">{p0?.name ?? "?"}</b>
+                  {colors.length > 1 && (
+                    <select aria-label={`Màu dòng ${i + 1}`} className="field-input !min-h-8 !w-auto !py-1 text-[13px]" value={color} onChange={e => set(l.key, { color: e.target.value, sizes: sizesOf(p0, e.target.value).map(z => ({ size: z, qty: "" })) })}>
+                      {colors.map(c => <option key={c} value={c}>{c}{p0!.bomByColor?.[c]?.length || p0!.bom.length ? "" : " (chưa định mức)"}</option>)}
+                    </select>
+                  )}
+                  {colors.length === 1 && <span className="text-[13px] text-muted-foreground">{color}</span>}
+                  <span className="ml-auto text-[13px]">{qty > 0 && <><b className="num">{qty}</b> cái{can("price.view") && cost > 0 && <span className="text-muted-foreground"> · {vnd(cost)}/cái</span>}</>}</span>
+                  <button type="button" aria-label={`Bỏ dòng ${i + 1}`} onClick={() => setLines(lines.filter(x => x.key !== l.key))} className="rounded-md p-1 text-subtle hover:bg-bad-soft hover:text-bad"><Trash2 className="size-4" /></button>
                 </div>
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-2">
+                  {l.sizes.map((x, j) => (
+                    <label key={x.size} className="flex flex-col gap-1 rounded-lg bg-surface p-2">
+                      <span className="text-xs font-bold text-brand">{x.size}</span>
+                      <input type="number" min={0} step={1} inputMode="numeric" placeholder="0" aria-label={`Số lượng ${p0?.name} size ${x.size}`}
+                        className="field-input num !min-h-8 !py-1" value={x.qty}
+                        onChange={e => set(l.key, { sizes: l.sizes.map((y, k) => (k === j ? { ...y, qty: e.target.value } : y)) })} />
+                    </label>
+                  ))}
+                </div>
+                {noBom && <p className="text-[12px] text-bad">Chưa có định mức phụ liệu{color ? ` cho màu ${color}` : ""}. Khai báo ở trang Sản phẩm & định mức trước.</p>}
               </div>
-            </div>
-            <p className="mt-1.5 text-[13px]">Tổng <b className="num text-brand">{qty}</b> cái</p>
+            ))}
+            <SearchPicker label="Thêm sản phẩm vào lệnh" placeholder="＋ Gõ tên, SKU để thêm sản phẩm…"
+              items={products.map(x => ({ id: x.id, label: x.name, sub: hasBom(x) ? x.category : "chưa định mức", search: [x.sku, x.category, ...(x.variants ?? []).map(v => v.sku)] }))}
+              onPick={addLine} />
           </div>
 
-          {noBom ? (
-            <CalcHint bad>
-              <b>{p.name}{color ? ` (${color})` : ""} chưa có định mức phụ liệu.</b> Khai báo ở trang Sản phẩm & định mức trước khi tạo lệnh.
-            </CalcHint>
-          ) : unusable.length ? (
-            <CalcHint bad>
-              <b>Phụ liệu không dùng được:</b> {unusable.map(m => `${m.code} (${m.status === "paused" ? "tạm ngưng" : "ngừng dùng"})`).join(" · ")}. Mở lại ở Kho phụ liệu hoặc sửa định mức.
-            </CalcHint>
-          ) : short.length ? (
-            <CalcHint bad>
-              <b>Không đủ phụ liệu ({short.length} mã):</b>
-              <ul className="mt-1 flex flex-col gap-1">
-                {short.map(n => (
-                  <li key={n.material.id} className="flex flex-wrap items-baseline gap-x-2 rounded-md bg-surface/70 px-2 py-1">
-                    <span className="font-bold">•</span>
-                    <b className="num">{n.material.code}</b>
-                    <span className="min-w-0 flex-1">{n.material.name}</span>
-                    <span className="num whitespace-nowrap">cần <b>{nf(n.qty, 1)}</b> · còn <b>{nf(n.material.stock, 1)}</b> · thiếu <b className="text-bad">{nf(n.qty - n.material.stock, 1)}</b> {n.material.unit}</span>
+          {needList.length > 0 && (
+            <CalcHint bad={needList.some(n => n.q > n.m.stock)}>
+              <b>Phụ liệu cần chuẩn bị cho lệnh này</b> <span className="text-muted-foreground">(chưa trừ kho)</span>
+              <ul className="mt-1 flex flex-col gap-0.5">
+                {needList.map(({ m, q }) => (
+                  <li key={m.id} className="flex flex-wrap gap-x-2">
+                    <span>•</span><b className="num">{m.code}</b><span className="min-w-0 flex-1">{m.name}</span>
+                    <span className="num whitespace-nowrap">cần <b>{nf(q, 1)}</b> · tồn {nf(m.stock, 1)}{q > m.stock && <> · thiếu <b className="text-bad">{nf(q - m.stock, 1)}</b></>} {m.unit}</span>
                   </li>
                 ))}
               </ul>
             </CalcHint>
-          ) : qty > 0 ? (
-            <CalcHint>
-              <b>Sẽ xuất kho:</b>
-              <ul className="mt-1 mb-1.5 flex flex-col gap-0.5">
-                {need.map(n => (
-                  <li key={n.material.id} className="flex gap-2">
-                    <span>•</span><b className="num">{n.material.code}</b><span className="min-w-0 flex-1">{n.material.name}</span>
-                    <span className="num whitespace-nowrap">{nf(n.qty, 1)} {n.material.unit}</span>
-                  </li>
-                ))}
-              </ul>
-              Giá vốn chốt cho lệnh: <b>{vnd(cost)}/cái</b> · tổng <b>{vnd(cost * qty)}</b>
-            </CalcHint>
-          ) : null}
-          <div>
-            <Button type="submit" disabled={noBom || !!short.length || !!unusable.length || qty <= 0}>Tạo lệnh + xuất phụ liệu</Button>
+          )}
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="submit" disabled={!canSubmit}>Tạo lệnh{valid.length > 1 ? ` (${valid.length} sản phẩm, ${totalQty} cái)` : ""}</Button>
+            {!lines.length && <span className="text-[13px] text-muted-foreground">Thêm sản phẩm vào lệnh ở ô bên trên.</span>}
           </div>
         </form>
       )}

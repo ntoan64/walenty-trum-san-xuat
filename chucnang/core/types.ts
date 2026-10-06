@@ -192,6 +192,10 @@ export interface ProductionOrder {
   unitCost: number // giá vốn 1 cái chốt cho lệnh
   labor?: number // công may trong giá vốn (sửa được khi thuê xưởng ngoài)
   costNote?: string // ghi chú khi chỉnh giá (vd xưởng ngoài may mắc hơn)
+  group?: string // mã lệnh chung (1 lệnh = 1 xưởng, nhiều sản phẩm; mỗi sản phẩm 1 dòng LSX-0005-1, -2…)
+  pendingIssue?: boolean // true = chưa xuất phụ liệu (tạo lệnh không trừ kho, bấm Xuất phụ liệu mới trừ)
+  issuedAt?: Date
+  issuedBy?: string
   color?: string // màu (sản phẩm nhiều màu)
   sizes?: SizeQty[]
   loss: number

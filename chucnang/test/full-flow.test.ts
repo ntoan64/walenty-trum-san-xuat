@@ -154,6 +154,7 @@ describe("4. Lệnh sản xuất trọn vòng", () => {
     const r = await ok(admin, "createOrder", { productId: s.products[0].id, workshopId: s.workshops[0].id, sizes: [{ size: "s", qty: 10 }, { size: "M", qty: 20 }, { size: "L", qty: 10 }], dueDate: dateIn(5) });
     orderId = r.ok ? r.id! : "";
     expect(orderId).toBe("LSX-0001");
+    await ok(kho, "issueMaterials", [orderId]); // tạo lệnh chưa trừ kho, bấm xuất mới trừ
     const s2 = await state();
     const o = s2.orders[0];
     expect(o.qty).toBe(40);

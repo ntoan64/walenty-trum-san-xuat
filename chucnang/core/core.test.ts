@@ -134,6 +134,8 @@ describe('admin sửa / hủy lệnh', () => {
     A.createProduct(c, { sku: 'SP1', name: 'Áo', laborCost: 0, bom: [{ material: m.id, qtyPerUnit: 2 }] })
     const r = A.createOrder(c, { productId: s.products[0].id, workshopId: s.workshops[0].id, sizes: [{ size: 'M', qty: 10 }], dueDate: due })
     const id = r.ok ? r.id! : ''
+    expect(m.stock).toBe(100) // tạo lệnh chưa trừ kho
+    expect(A.issueMaterials(c, [id]).ok).toBe(true)
     expect(m.stock).toBe(80)
     expect(A.editOrder(c, id, { sizes: [{ size: 'M', qty: 15 }] }).ok).toBe(true)
     expect(m.stock).toBe(70)
@@ -161,6 +163,7 @@ describe('nhắc việc', () => {
     A.importMaterial(c, { materialId: s.materials[0].id, qty: 100, price: 1000, supplier: '' })
     A.createProduct(c, { sku: 'SP1', name: 'Áo', laborCost: 0, bom: [{ material: s.materials[0].id, qtyPerUnit: 1 }] })
     const id = (A.createOrder(c, { productId: s.products[0].id, workshopId: s.workshops[0].id, sizes: [{ size: 'M', qty: 5 }], dueDate: due }) as { id: string }).id
+    A.issueMaterials(c, [id])
     A.confirmCut(c, id)
     A.receive(c, id, { sizes: [{ size: 'M', qty: 5 }] })
     expect(A.sendReminders(c).ok).toBe(true)

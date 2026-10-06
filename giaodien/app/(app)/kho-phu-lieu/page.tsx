@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Receipt, Warehouse } from "lucide-react";
+import { ClipboardList, Pencil, Receipt, Warehouse } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  byId, MATERIAL_CATEGORIES, MATERIAL_STATUS, okLevel, stockLevel, sum,
+  byId, materialForecast, MATERIAL_CATEGORIES, MATERIAL_STATUS, okLevel, stockLevel, sum,
   type ItemStatus, type Material, type MaterialCategory,
 } from "@core";
 import { matches } from "@/lib/search";
@@ -87,6 +87,9 @@ export default function MaterialsPage() {
   const [q, setQ] = useDraft("npl:q", "");
   const list = s.materials.filter(m => (cat === "all" || m.category === cat) && matches(q, m.code, m.name, MATERIAL_CATEGORIES[m.category], m.unit, m.supplier, m.supplierCode, m.note));
   const manage = can("material.manage");
+  // tổng định mức các lệnh chưa xuất phụ liệu (không tách xưởng)
+  const forecast = materialForecast(s.products, s.materials, s.orders);
+  const shortN = forecast.filter(x => x.short > 0).length;
   const hist = s.materialTxns
     .filter(t => filter === "all" || t.material === filter)
     .slice()
@@ -140,6 +143,28 @@ export default function MaterialsPage() {
         ]} />
       </div>
       {can("material.import") && <ImportTable />}
+
+      {forecast.length > 0 && (
+        <Panel title="Cần chuẩn bị cho lệnh chưa xuất" icon={ClipboardList} flush
+          tag={shortN ? <StatusPill tone="bad" dot>Thiếu {shortN} mã</StatusPill> : <StatusPill tone="ok" dot>Đủ</StatusPill>}>
+          <TableWrap>
+            <table className="wl-table">
+              <thead><tr><th>Mã</th><th>Tên</th><th className="r">Cần theo định mức</th><th className="r">Tồn</th><th className="r">Đang thiếu</th></tr></thead>
+              <tbody>
+                {forecast.map(({ material: m, need, short }) => (
+                  <tr key={m.id}>
+                    <td className="num font-bold text-brand">{m.code}</td>
+                    <td>{m.name}</td>
+                    <td className="r num">{nf(need, 2)} {m.unit}</td>
+                    <td className="r num">{nf(m.stock, 2)}</td>
+                    <td className={`r num font-semibold ${short > 0 ? "text-bad" : "text-ok"}`}>{short > 0 ? `${nf(short, 2)} ${m.unit}` : "Đủ"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableWrap>
+        </Panel>
+      )}
 
       <Panel
         title="Tồn kho" icon={Warehouse} flush

@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Coins, PackageOpen, Pencil, Plus, Scale, Settings2, Trash2, Wrench } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  byId, closeChecklist, canClose, DEFECT_KIND, DEFECTS, isBalanced, knownDefects, sizeProgress, isOrderLate, LOSS_ALLOWED, SIZES,
+  byId, forColor, needFor, closeChecklist, canClose, DEFECT_KIND, DEFECTS, isBalanced, knownDefects, sizeProgress, isOrderLate, LOSS_ALLOWED, SIZES,
   type Batch, type DefectLine, type ProductionOrder,
 } from "@core";
 import { Button } from "@/components/ui/button";
@@ -416,6 +416,36 @@ export default function OrderDetailPage() {
     blocks.push(
       <ActionBox key="cancelled" tone="warn" title={`Lệnh đã hủy ngày ${fmtD(o.cancelled.at)}`} desc={<>Bởi {o.cancelled.by}. Lý do: <b>{o.cancelled.reason}</b></>} />,
     );
+  } else if (o.step === "cut" && o.pendingIssue) {
+    // chưa xuất phụ liệu: dự báo cần chuẩn bị cho cả lệnh (mọi dòng chưa xuất cùng mã lệnh)
+    const lines = s.orders.filter(x => !x.cancelled && x.pendingIssue && (o.group ? x.group === o.group : x.id === o.id));
+    const need = new Map<string, number>();
+    for (const x of lines) for (const n of needFor(forColor(prodOf(s, x), x.color), x.qty, s.materials)) need.set(n.material.id, (need.get(n.material.id) ?? 0) + n.qty);
+    const list = [...need].map(([id, q]) => ({ m: byId(s.materials, id)!, q }));
+    const short = list.filter(x => x.q > x.m.stock);
+    blocks.push(
+      <ActionBox key="issue" tone={short.length ? "warn" : undefined} title="Chưa xuất phụ liệu"
+        desc={<>Phụ liệu cần chuẩn bị cho {lines.length > 1 ? <>cả lệnh <b>{o.group}</b> ({lines.length} sản phẩm)</> : <>{o.qty} cái</>}. Bấm Xuất phụ liệu khi giao cho {wsName(s, o.workshop)}, lúc đó mới trừ kho.</>}>
+        {list.length ? (
+          <ul className="mb-3 divide-y divide-line overflow-hidden rounded-lg bg-surface text-[13px]">
+            {list.map(({ m, q }) => (
+              <li key={m.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 px-3 py-2">
+                <span><b className="num text-brand">{m.code}</b> · {m.name}</span>
+                <span className="num whitespace-nowrap">cần <b>{nf(q, 2)}</b> · tồn {nf(m.stock, 2)}{q > m.stock && <> · thiếu <b className="text-bad">{nf(q - m.stock, 2)}</b></>} {m.unit}</span>
+              </li>
+            ))}
+          </ul>
+        ) : <p className="mb-3 text-[13px] text-bad">Chưa có định mức phụ liệu cho sản phẩm này.</p>}
+        {can("order.create") && (
+          <Button disabled={!!short.length || !list.length} onClick={() => actC(
+            { title: "Xuất phụ liệu, trừ kho?", confirmLabel: "Xuất phụ liệu",
+              description: <Summary rows={[["Lệnh", o.group ?? o.code], ["Xưởng", wsName(s, o.workshop)], ...list.map(({ m, q }) => [`${m.code} · ${m.name}`, `${nf(q, 2)} ${m.unit}`] as [string, string])]} /> },
+            "order.create", A.issueMaterials, lines.map(x => x.id),
+          )}>Xuất phụ liệu{lines.length > 1 ? ` cả lệnh (${lines.length} sản phẩm)` : ""}</Button>
+        )}
+        {short.length > 0 && <p className="mt-2 text-[12px] text-bad">Thiếu {short.length} mã, nhập kho đủ rồi mới xuất được.</p>}
+      </ActionBox>,
+    );
   } else if (o.step === "cut") {
     blocks.push(
       <ActionBox key="prep" title="Nguyên phụ liệu cần chuẩn bị" desc={`Đã xuất kho theo định mức cho ${o.qty} cái. Chuẩn bị đủ để giao ${wsName(s, o.workshop)} cắt.`}>
@@ -501,12 +531,17 @@ export default function OrderDetailPage() {
     <>
       <PageHeader
         back={{ href: "/lenh-san-xuat", label: "Lệnh sản xuất" }}
-        eyebrow={<span className="num">{o.code}</span>}
+        eyebrow={<span className="num">{o.code}{o.group && (() => {
+          const sib = s.orders.filter(x => x.group === o.group && x.id !== o.id);
+          return sib.length ? <span className="ml-2 font-sans normal-case">· cùng lệnh: {sib.map((x, i) => <Fragment key={x.id}>{i > 0 && ", "}<Link href={`/lenh-san-xuat/${x.id}`} className="text-brand hover:underline">{x.code} {prodOf(s, x).name}</Link></Fragment>)}</span> : null;
+        })()}</span>}
         title={<>{p.name} · <span className="num">{o.qty}</span> cái</>}
         desc={
           <span className="flex flex-wrap items-center gap-2">
             {wsName(s, o.workshop)} · tạo {fmtD(o.createdAt)} · dự kiến xong {fmtD(o.dueAt)}
             {o.sizes?.map(z => <StatusPill key={z.size} tone="muted"><b className="text-brand">{z.size}</b> <span className="num">{z.qty}</span></StatusPill>)}
+            {o.color && <StatusPill tone="muted">{o.color}</StatusPill>}
+            {o.pendingIssue && !o.cancelled && <StatusPill tone="warn" dot>Chưa xuất phụ liệu</StatusPill>}
             {late && <StatusPill tone="bad" dot>Trễ hạn</StatusPill>}
             {o.cancelled && <StatusPill tone="bad" dot>Đã hủy</StatusPill>}
           </span>
