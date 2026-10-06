@@ -158,6 +158,34 @@ export function updateMaterial(c: Ctx, id: string, a: { code: string; name: stri
   return ok(old === code ? `Đã sửa ${code}` : `Đã đổi mã ${old} → ${code}`);
 }
 
+// Sửa tay số tồn / giá BQ (kiểm kê, nhập sai): ghi "adjust" chênh lệch vào lịch sử
+export function adjustMaterial(c: Ctx, id: string, a: { stock: number; avgPrice: number; reason?: string }): Result {
+  const m = byId(c.s.materials, id);
+  if (!m) return fail("Không tìm thấy phụ liệu");
+  if (!Number.isFinite(a.stock) || a.stock < 0 || a.stock > 1e7) return fail("Số tồn không hợp lệ (không được âm)");
+  if (!Number.isFinite(a.avgPrice) || a.avgPrice < 0 || a.avgPrice > 1e9) return fail("Giá BQ không hợp lệ");
+  if (tooLong(a.reason, LIMITS.text)) return fail("Lý do quá dài");
+  const stock = Math.round(a.stock * 1000) / 1000, avg = Math.round(a.avgPrice);
+  const diff = Math.round((stock - m.stock) * 1000) / 1000;
+  if (!diff && avg === Math.round(m.avgPrice)) return fail("Không có gì thay đổi");
+  const parts = [diff ? `tồn ${nf(m.stock, 2)} → ${nf(stock, 2)}` : "", avg !== Math.round(m.avgPrice) ? `giá BQ ${vnd(m.avgPrice)} → ${vnd(avg)}` : ""].filter(Boolean).join(", ");
+  m.stock = stock; m.avgPrice = avg;
+  c.s.materialTxns.push({ id: uid(c, "t"), material: m.id, type: "adjust", qty: diff, reason: `Sửa tay: ${parts}${a.reason?.trim() ? ` (${a.reason.trim()})` : ""}`, stockAfter: m.stock, avgAfter: m.avgPrice, by: c.me, at: tick(c) });
+  if (m.status === "active") checkLow(c, m);
+  return ok(`${m.code}: ${parts}`);
+}
+
+// Xóa phụ liệu (kèm lịch sử nhập/xuất của nó). Không xóa khi còn nằm trong định mức sản phẩm
+export function deleteMaterial(c: Ctx, id: string): Result {
+  const m = byId(c.s.materials, id);
+  if (!m) return fail("Không tìm thấy phụ liệu");
+  const used = c.s.products.filter(p => p.bom.some(b => b.material === id) || Object.values(p.bomByColor ?? {}).some(l => l.some(b => b.material === id)));
+  if (used.length) return fail(`${m.code} đang có trong định mức: ${used.slice(0, 5).map(p => p.name).join(", ")}${used.length > 5 ? "…" : ""}. Bỏ khỏi định mức trước rồi xóa.`);
+  c.s.materials = c.s.materials.filter(x => x.id !== id);
+  c.s.materialTxns = c.s.materialTxns.filter(t => t.material !== id);
+  return ok(`Đã xóa ${m.code} · ${m.name}`);
+}
+
 export function setMaterialImage(c: Ctx, id: string, image: string | null): Result {
   const m = byId(c.s.materials, id);
   if (!m) return fail("Không tìm thấy phụ liệu");
@@ -1191,6 +1219,8 @@ export const ACTIONS: Record<string, [Action | null, (c: Ctx, ...args: any[]) =>
   updateMaterial: ["material.manage", updateMaterial, "Sửa phụ liệu"],
   setVariantPrice: ["product.manage", setVariantPrice, "Sửa giá phiên bản"],
   setMaterialImage: ["material.manage", setMaterialImage, "Ảnh phụ liệu"],
+  adjustMaterial: ["material.manage", adjustMaterial, "Sửa tồn / giá BQ phụ liệu"],
+  deleteMaterial: ["material.manage", deleteMaterial, "Xóa phụ liệu"],
   setOrderCost: ["order.create", setOrderCost, "Chỉnh giá vốn lệnh"],
   createOrders: ["order.create", createOrders, "Tạo lệnh sản xuất"],
   issueMaterials: ["order.create", issueMaterials, "Xuất phụ liệu cho lệnh"],

@@ -31,12 +31,24 @@ function EditMaterialDialog({ m, onClose }: { m: Material; onClose: () => void }
   const [f, setF] = useState({ code: m.code, name: m.name, unit: m.unit, category: m.category });
   const [busy, setBusy] = useState(false);
   const [img, setImg] = useState<string[]>(m.image ? [m.image] : []);
+  const [st, setSt] = useState({ stock: String(m.stock), avg: String(Math.round(m.avgPrice)), reason: "" });
+  const confirm = useConfirmAction();
   const save = async () => {
     setBusy(true);
     if ((img[0] ?? "") !== (m.image ?? "")) await act("material.manage", A.setMaterialImage, m.id, img[0] ?? null);
-    const r = await act("material.manage", A.updateMaterial, m.id, f);
+    const stock = Number(st.stock.replace(",", ".")), avg = Number(st.avg.replace(/[.,\s]/g, ""));
+    if (stock !== m.stock || avg !== Math.round(m.avgPrice)) {
+      const r0 = await act("material.manage", A.adjustMaterial, m.id, { stock, avgPrice: avg, reason: st.reason });
+      if (!r0.ok) { setBusy(false); return; }
+    }
+    const changed = f.code !== m.code || f.name !== m.name || f.unit !== m.unit || f.category !== m.category;
+    const r = changed ? await act("material.manage", A.updateMaterial, m.id, f) : { ok: true };
     setBusy(false);
     if (r.ok) onClose();
+  };
+  const remove = async () => {
+    const r = await confirm({ title: `Xóa ${m.code}?`, confirmLabel: "Xóa", description: <Summary rows={[["Phụ liệu", m.name], ["Đang tồn", `${nf(m.stock, 2)} ${m.unit}`], ["Lưu ý", "Xóa luôn lịch sử nhập / xuất của phụ liệu này"]]} /> }, "material.manage", A.deleteMaterial, m.id);
+    if (r?.ok) onClose();
   };
   return (
     <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
@@ -66,8 +78,20 @@ function EditMaterialDialog({ m, onClose }: { m: Material; onClose: () => void }
             <span className="mb-1 block text-xs font-medium text-muted-foreground">Ảnh</span>
             <PhotoPicker label={`Ảnh ${m.code}`} folder="material" max={1} value={img} onChange={setImg} />
           </div>
+          <Field label={`Tồn kho (${m.unit || "đơn vị"})`} htmlFor="em-stock">
+            <input id="em-stock" inputMode="decimal" className="field-input num" value={st.stock} onChange={e => setSt({ ...st, stock: e.target.value })} />
+          </Field>
+          <Field label="Giá BQ (đ)" htmlFor="em-avg">
+            <input id="em-avg" inputMode="numeric" className="field-input num" value={st.avg} onChange={e => setSt({ ...st, avg: e.target.value })} />
+          </Field>
+          <div className="col-span-2">
+            <Field label="Lý do sửa tồn / giá (không bắt buộc)" htmlFor="em-reason">
+              <input id="em-reason" className="field-input" maxLength={200} placeholder="VD: kiểm kê, nhập sai" value={st.reason} onChange={e => setSt({ ...st, reason: e.target.value })} />
+            </Field>
+          </div>
         </div>
         <DialogFooter>
+          <Button variant="destructive" className="sm:mr-auto" onClick={remove} disabled={busy}>Xóa phụ liệu</Button>
           <Button variant="secondary" onClick={onClose}>Hủy</Button>
           <Button onClick={save} disabled={busy}>Lưu</Button>
         </DialogFooter>
@@ -140,7 +164,7 @@ export default function MaterialsPage() {
             rows: s.materials.map(m => ({ code: m.code, name: m.name, cat: MATERIAL_CATEGORIES[m.category], unit: m.unit, stock: m.stock, avg: m.avgPrice, value: m.stock * m.avgPrice, min: m.minStock, ok: okLevel(m), status: MATERIAL_STATUS[m.status] })) },
           { name: "Lịch sử nhập xuất",
             columns: [{ header: "Ngày giờ", key: "at", fmt: "datetime", width: 18 }, { header: "Mã", key: "code" }, { header: "Phụ liệu", key: "name", width: 24 }, { header: "Loại", key: "type" }, { header: "Số lượng", key: "qty", fmt: "dec" }, { header: "Đơn giá", key: "price", fmt: "money" }, { header: "Thành tiền", key: "money", fmt: "money" }, { header: "Nhà CC / Lệnh", key: "ref", width: 20 }, { header: "Ghi chú", key: "reason", width: 28 }, { header: "Tồn sau", key: "after", fmt: "dec" }, { header: "Người làm", key: "by" }],
-            rows: s.materialTxns.slice().sort((a, b) => b.at.getTime() - a.at.getTime()).map(t => { const m = byId(s.materials, t.material); return { at: t.at, code: m?.code, name: m?.name, type: t.type === "in" ? "Nhập" : t.type === "adjust" ? "Hoàn kho" : "Xuất", qty: t.type === "out" ? -t.qty : t.qty, price: t.type === "in" ? t.price : "", money: t.type === "in" ? t.qty * (t.price ?? 0) : "", ref: t.type === "in" ? t.supplier : t.order, reason: t.reason, after: t.stockAfter, by: t.by }; }) },
+            rows: s.materialTxns.slice().sort((a, b) => b.at.getTime() - a.at.getTime()).map(t => { const m = byId(s.materials, t.material); return { at: t.at, code: m?.code, name: m?.name, type: t.type === "in" ? "Nhập" : t.type === "adjust" ? (t.reason?.startsWith("Sửa tay") ? "Sửa tay" : "Hoàn kho") : "Xuất", qty: t.type === "out" ? -t.qty : t.qty, price: t.type === "in" ? t.price : "", money: t.type === "in" ? t.qty * (t.price ?? 0) : "", ref: t.type === "in" ? t.supplier : t.order, reason: t.reason, after: t.stockAfter, by: t.by }; }) },
         ]} />
       </div>
       {can("material.import") && <ImportTable />}
@@ -208,7 +232,7 @@ export default function MaterialsPage() {
                     <td className="text-brown">{MATERIAL_CATEGORIES[m.category]}</td>
                     <td>{m.unit}</td>
                     <td className={`r num font-semibold ${lv === "out" ? "text-bad" : lv === "low" ? "text-warn" : ""}`}>{nf(m.stock, 1)}</td>
-                    <td className="r num">{m.totalImportQty ? vnd(m.avgPrice) : "–"}</td>
+                    <td className="r num">{m.avgPrice ? vnd(m.avgPrice) : "–"}</td>
                     <td className="r num">{vnd(m.stock * m.avgPrice)}</td>
                     <td>
                       {m.status === "discontinued" ? <span className="text-xs text-subtle">–</span>
@@ -247,8 +271,8 @@ export default function MaterialsPage() {
                   <tr key={t.id}>
                     <td className="num">{fmtD(t.at)}</td>
                     <td className="num">{m.code}</td>
-                    <td>{t.type === "in" ? <StatusPill tone="ok">Nhập</StatusPill> : t.type === "adjust" ? <StatusPill tone="info">Hoàn kho</StatusPill> : <StatusPill tone="muted">Xuất</StatusPill>}</td>
-                    <td className="r num">{t.type === "out" ? "−" : "+"}{nf(t.qty, 2)}</td>
+                    <td>{t.type === "in" ? <StatusPill tone="ok">Nhập</StatusPill> : t.type === "adjust" ? <StatusPill tone="info">{t.reason?.startsWith("Sửa tay") ? "Sửa tay" : "Hoàn kho"}</StatusPill> : <StatusPill tone="muted">Xuất</StatusPill>}</td>
+                    <td className="r num">{t.type === "out" || t.qty < 0 ? "−" : "+"}{nf(Math.abs(t.qty), 2)}</td>
                     <td className="r num">{t.type === "in" ? vnd(t.price ?? 0) : ""}</td>
                     <td className={t.type === "in" ? "" : "num"}>{t.type === "in" ? t.supplier : t.order}{t.reason && <div className="font-sans text-xs text-muted-foreground">{t.reason}</div>}</td>
                     <td className="r num">{nf(t.stockAfter, 2)}</td>
