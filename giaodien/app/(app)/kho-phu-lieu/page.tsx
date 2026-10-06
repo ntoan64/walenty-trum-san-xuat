@@ -21,6 +21,7 @@ import { StatusSelect } from "@/components/xf/status-select";
 import { useDraft } from "@/lib/use-draft";
 import { ExportButton } from "@/components/xf/export-button";
 import { EmptyState, Field, PageHeader, Panel, StatCard, StatusPill, TableWrap, Tag } from "@/components/xf/basics";
+import { SearchPicker } from "@/components/xf/search-picker";
 
 const CATS = Object.entries(MATERIAL_CATEGORIES) as [MaterialCategory, string][];
 
@@ -231,10 +232,8 @@ export default function MaterialsPage() {
         actions={
           <div className="w-full min-w-[200px] sm:w-auto">
             <label htmlFor="h-f" className="sr-only">Lọc theo phụ liệu</label>
-            <select id="h-f" className="field-input !bg-surface" value={filter} onChange={e => setFilter(e.target.value)}>
-              <option value="all">Tất cả phụ liệu</option>
-              {s.materials.map(m => <option key={m.id} value={m.id}>{m.code} · {m.name}</option>)}
-            </select>
+            <SearchPicker id="h-f" label="Lọc theo phụ liệu" placeholder="Tất cả phụ liệu — gõ để lọc…" value={filter === "all" ? undefined : filter} onPick={setFilter}
+              items={[{ id: "all", label: "Tất cả phụ liệu" }, ...s.materials.map(m => ({ id: m.id, label: `${m.code} · ${m.name}` }))]} />
           </div>
         }
       >

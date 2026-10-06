@@ -9,6 +9,7 @@ import { VariantsEditor } from "@/components/xf/variants-editor";
 import { SapoSheetPanel } from "@/components/xf/sapo-sheet";
 import { fmtRange, ProductThumb, SapoVariants } from "@/components/xf/sapo-product";
 import { CostingCard } from "@/components/xf/costing-card";
+import { SearchPicker } from "@/components/xf/search-picker";
 import { Button } from "@/components/ui/button";
 import { matches } from "@/lib/search";
 import { SearchBox } from "@/components/xf/search-box";
@@ -75,10 +76,9 @@ function CreateProduct() {
               const m = byId(s.materials, b.material);
               return (
                 <div key={b.key} className="row-in grid grid-cols-[minmax(0,1fr)_110px_auto_36px] items-center gap-2">
-                  <select aria-label={`Phụ liệu dòng ${i + 1}`} className="field-input" value={b.material}
-                    onChange={e => setBom(bom.map(x => (x.key === b.key ? { ...x, material: e.target.value } : x)))}>
-                    {usable.map(x => <option key={x.id} value={x.id}>{x.code} · {x.name}</option>)}
-                  </select>
+                  <SearchPicker label={`Phụ liệu dòng ${i + 1}`} placeholder="Gõ mã, tên phụ liệu…" value={b.material}
+                    items={usable.map(x => ({ id: x.id, label: `${x.code} · ${x.name}`, sub: x.unit, search: [x.supplier, x.supplierCode] }))}
+                    onPick={id => setBom(bom.map(x => (x.key === b.key ? { ...x, material: id } : x)))} />
                   <input aria-label={`Định mức dòng ${i + 1}`} type="number" min={0} step="any" className="field-input num" value={b.qty}
                     onChange={e => setBom(bom.map(x => (x.key === b.key ? { ...x, qty: e.target.value } : x)))} />
                   <span className="w-12 text-xs text-subtle">{m?.unit}</span>

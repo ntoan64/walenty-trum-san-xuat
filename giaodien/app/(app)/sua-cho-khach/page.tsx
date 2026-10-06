@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { Summary } from "@/components/xf/confirm-provider";
 import { Collapsible } from "@/components/xf/collapsible";
 import { EmptyState, Field, PageHeader, Panel, StatCard, StatusPill, type PillTone } from "@/components/xf/basics";
+import { SearchPicker } from "@/components/xf/search-picker";
 
 const STEPS: { key: CustomerRepairStatus; label: string; tone: PillTone }[] = [
   { key: "received", label: "Đã nhận, chờ gửi xưởng", tone: "warn" },
@@ -101,9 +102,8 @@ function SendDialog({ r, onClose }: { r: CustomerRepair; onClose: () => void }) 
         </DialogHeader>
         {list.length ? (
           <Field label="Xưởng sửa" htmlFor="cr-ws">
-            <select id="cr-ws" className="field-input" value={ws} onChange={e => setWs(e.target.value)}>
-              {list.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
+            <SearchPicker id="cr-ws" label="Xưởng sửa" placeholder="Gõ tên xưởng…" value={ws} onPick={setWs}
+              items={list.map(w => ({ id: w.id, label: w.name, sub: w.area, search: [w.contactName, ...(w.aliases ?? [])] }))} />
           </Field>
         ) : <p className="text-[13px] text-bad">Chưa có xưởng nào đang hợp tác. Thêm xưởng ở trang Xưởng may.</p>}
         <DialogFooter>

@@ -23,6 +23,7 @@ import { ConfirmButton } from "@/components/xf/confirm-dialog";
 import { useDraft } from "@/lib/use-draft";
 import { PhotoStrip } from "@/components/xf/photos";
 import { cn } from "@/lib/utils";
+import { SearchPicker } from "@/components/xf/search-picker";
 
 function ActionBox({ title, desc, children, tone }: { title: string; desc?: React.ReactNode; children?: React.ReactNode; tone?: "warn" }) {
   return (
@@ -354,9 +355,8 @@ function EditOrderDialog({ o, onClose }: { o: ProductionOrder; onClose: () => vo
           </Field>
           {beforeCut && (
             <Field label="Xưởng" htmlFor="eo-ws">
-              <select id="eo-ws" className="field-input" value={ws} onChange={e => setWs(e.target.value)}>
-                {s.workshops.filter(w => w.active || w.id === o.workshop).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-              </select>
+              <SearchPicker id="eo-ws" label="Xưởng" placeholder="Gõ tên xưởng…" value={ws} onPick={setWs}
+                items={s.workshops.filter(w => (w.active && w.kind !== "ncc") || w.id === o.workshop).map(w => ({ id: w.id, label: w.name, sub: w.area, search: [w.contactName, ...(w.aliases ?? [])] }))} />
             </Field>
           )}
         </div>
