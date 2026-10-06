@@ -233,18 +233,20 @@ describe("5. Ngưỡng báo hết / báo đủ", () => {
 
 describe("6. Đồ khách gửi sửa", () => {
   it("QC nhận đồ → gửi xưởng → xưởng trả → trả khách, có ghi chú", async () => {
-    const r = await ok(qc, "createCustomerRepair", { customerName: "Chị Mai", customerPhone: "0909 123 456", item: "Đầm lụa đen", size: "m", request: "Lên lai 2cm", promisedDate: dateIn(4) });
+    const r = await ok(qc, "createCustomerRepair", { customerName: "Chị Mai", customerPhone: "0909 123 456", orderCode: "SON15488", item: "Đầm lụa đen", size: "m", request: "Lên lai 2cm", promisedDate: dateIn(4) });
     const id = r.ok ? r.id! : "";
     expect(id).toBe("KS-001");
     expect(await fails(qc, "customerRepairDone", id)).toMatch(/chưa trả/);
     await ok(qc, "noteCustomerRepair", id, "Khách gọi đổi sang lên lai 3cm");
+    expect(await fails(qc, "createCustomerRepair", { customerName: "A", customerPhone: "0909123456", item: "x", request: "y", promisedDate: dateIn(4) })).toMatch(/mã đơn hàng/);
+    await ok(qc, "receiveCustomerRepair", id);
     await ok(qc, "sendCustomerRepair", id, (await state()).workshops[0].id);
     await ok(qc, "customerRepairBack", id);
     await ok(qc, "customerRepairDone", id);
     const cr = (await state()).customerRepairs[0];
     expect(cr.status).toBe("done");
     expect(cr.size).toBe("M");
-    expect(cr.history.map(h => h.text).join(" | ")).toMatch(/Lên lai 2cm.*lên lai 3cm.*Gửi Xưởng A.*trả khách/);
+    expect(cr.history.map(h => h.text).join(" | ")).toMatch(/Lên lai 2cm.*lên lai 3cm.*QC đã nhận.*Gửi Xưởng A.*trả sale/);
   });
 });
 
@@ -275,7 +277,7 @@ describe("8. Lịch sử, đồng thời, chống spam, lưu bền", () => {
   it("lịch sử ghi đủ từng thao tác kèm người làm", async () => {
     const rows = await listAudit({ limit: 1000 });
     const labels = new Set(rows.map(r => r.label));
-    for (const l of ["Nhập kho", "Thêm sản phẩm", "Tạo lệnh sản xuất", "Lưu kết quả QC", "Duyệt hao hụt", "Đóng lệnh", "Nhận đồ khách gửi sửa", "Đặt mật khẩu"]) {
+    for (const l of ["Nhập kho", "Thêm sản phẩm", "Tạo lệnh sản xuất", "Lưu kết quả QC", "Duyệt hao hụt", "Đóng lệnh", "Sale gửi yêu cầu sửa đồ khách", "Đặt mật khẩu"]) {
       expect(labels.has(l), `thiếu lịch sử "${l}"`).toBe(true);
     }
     expect((await listAudit({ userId: qc.id })).every(r => r.userId === qc.id)).toBe(true);

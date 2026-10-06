@@ -110,13 +110,16 @@ describe('đồ khách gửi sửa', () => {
     const c = { s, me: 'Team QC', meId: 'u3', now: new Date() }
     const due = new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10)
     expect(A.createWorkshop(c, { name: 'Xưởng A', area: '', contactName: '', phone: '0903112456' }).ok).toBe(true)
-    const r = A.createCustomerRepair(c, { customerName: 'Chị Mai', customerPhone: '0909123456', item: 'Đầm lụa', size: 'm', request: 'Lên lai 2cm', promisedDate: due })
+    const r = A.createCustomerRepair(c, { customerName: 'Chị Mai', customerPhone: '0909123456', orderCode: 'son15488', item: 'Đầm lụa', size: 'm', request: 'Lên lai 2cm', promisedDate: due })
     expect(r.ok && r.id).toBe('KS-001')
     expect(A.customerRepairDone(c, 'KS-001').ok).toBe(false) // chưa sửa thì chưa trả khách được
+    expect(A.sendCustomerRepair(c, 'KS-001', s.workshops[0].id).ok).toBe(false) // QC chưa nhận hàng
+    expect(A.receiveCustomerRepair(c, 'KS-001').ok).toBe(true)
+    expect(s.customerRepairs![0].orderCode).toBe('SON15488')
     expect(A.sendCustomerRepair(c, 'KS-001', s.workshops[0].id).ok).toBe(true)
     expect(A.customerRepairBack(c, 'KS-001').ok).toBe(true)
     expect(A.customerRepairDone(c, 'KS-001').ok).toBe(true)
-    expect(s.customerRepairs[0].history).toHaveLength(4)
+    expect(s.customerRepairs[0].history).toHaveLength(5)
   })
 })
 

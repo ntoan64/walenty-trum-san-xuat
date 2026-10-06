@@ -16,10 +16,11 @@ import { EmptyState, Field, PageHeader, Panel, StatCard, StatusPill, type PillTo
 import { SearchPicker } from "@/components/xf/search-picker";
 
 const STEPS: { key: CustomerRepairStatus; label: string; tone: PillTone }[] = [
-  { key: "received", label: "Đã nhận, chờ gửi xưởng", tone: "warn" },
+  { key: "requested", label: "Sale gửi yêu cầu, chờ QC nhận", tone: "bad" },
+  { key: "received", label: "QC đã nhận, chờ gửi xưởng", tone: "warn" },
   { key: "sent", label: "Xưởng đang sửa", tone: "info" },
-  { key: "returned", label: "Sửa xong, chờ trả khách", tone: "brand" },
-  { key: "done", label: "Đã trả khách", tone: "ok" },
+  { key: "returned", label: "QC đã kiểm, chờ trả sale", tone: "brand" },
+  { key: "done", label: "Đã trả sale · hoàn thành", tone: "ok" },
 ];
 const stepOf = (k: CustomerRepairStatus) => STEPS.find(s => s.key === k)!;
 const isLate = (r: CustomerRepair, now: Date) => r.status !== "done" && r.promisedAt < now;
@@ -37,7 +38,7 @@ function ReceiveFromCustomer() {
       {
         title: "Nhận đồ khách gửi sửa?", confirmLabel: "Nhận đồ",
         description: <Summary rows={[
-          ["Khách", `${f.customerName} · ${f.customerPhone}`], ["Mã ĐH Sapo", f.orderCode.trim().toUpperCase() || "—"], ["Sản phẩm", `${f.item}${f.size ? ` · size ${f.size.toUpperCase()}` : ""}`],
+          ["Khách", `${f.customerName} · ${f.customerPhone}`], ["Mã ĐH Sapo", f.orderCode.trim().toUpperCase() || "—"], ["Sản phẩm", f.item],
           ["Khách muốn sửa", f.request], ...(f.note.trim() ? [["Ghi chú", f.note] as [string, string]] : []),
           ["Hẹn trả", f.promisedDate.split("-").reverse().join("/")],
         ]} />,
@@ -47,7 +48,7 @@ function ReceiveFromCustomer() {
     if (r?.ok) clear(blank());
   };
   return (
-    <Collapsible title="Nhận đồ khách gửi sửa" icon={Plus} defaultOpen>
+    <Collapsible title="Sale tạo yêu cầu gửi sửa" icon={Plus} defaultOpen>
       <form onSubmit={submit} className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4 md:p-5">
         <Field label="Tên khách" htmlFor="cr-name">
           <input id="cr-name" className="field-input" maxLength={60} value={f.customerName} onChange={e => setF({ ...f, customerName: e.target.value })} />
@@ -55,16 +56,13 @@ function ReceiveFromCustomer() {
         <Field label="Số điện thoại khách" htmlFor="cr-phone">
           <input id="cr-phone" type="tel" inputMode="tel" className="field-input num" maxLength={15} value={f.customerPhone} onChange={e => setF({ ...f, customerPhone: e.target.value })} />
         </Field>
-        <Field label="Mã ĐH Sapo" htmlFor="cr-order">
+        <Field label="Mã ĐH Sapo (bắt buộc)" htmlFor="cr-order">
           <input id="cr-order" className="field-input num uppercase" maxLength={30} placeholder="VD: SON15488" value={f.orderCode} onChange={e => setF({ ...f, orderCode: e.target.value })} />
         </Field>
         <Field label="Sản phẩm" htmlFor="cr-item">
           <input id="cr-item" list="cr-products" className="field-input" maxLength={120} placeholder="VD: Đầm lụa đen DM05" value={f.item} onChange={e => setF({ ...f, item: e.target.value })} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Size" htmlFor="cr-size">
-            <input id="cr-size" className="field-input uppercase" maxLength={10} value={f.size} onChange={e => setF({ ...f, size: e.target.value })} />
-          </Field>
           <Field label="Hẹn trả khách" htmlFor="cr-due">
             <input id="cr-due" type="date" min={isoDateVN(new Date())} className="field-input num" value={f.promisedDate} onChange={e => setF({ ...f, promisedDate: e.target.value })} />
           </Field>
@@ -192,18 +190,24 @@ function RepairCard({ r, now, onSend, onNote }: { r: CustomerRepair; now: Date; 
       {allowed && r.status !== "done" && (
         <div className="flex flex-wrap justify-end gap-1.5">
           <Button size="sm" variant="secondary" onClick={onNote}><MessageSquarePlus /> Ghi chú</Button>
+          {r.status === "requested" && (
+            <Button size="sm" onClick={() => act(
+              { title: `QC nhận ${r.code} từ sale?`, confirmLabel: "Đã nhận hàng", description: <Summary rows={[["Mã ĐH Sapo", r.orderCode ?? "—"], ["Sản phẩm", r.item], ["Khách muốn sửa", r.request]]} /> },
+              "customer.repair", A.receiveCustomerRepair, r.id,
+            )}>Đã nhận hàng</Button>
+          )}
           {r.status === "received" && <Button size="sm" onClick={onSend}>Gửi xưởng</Button>}
           {r.status === "sent" && (
             <Button size="sm" onClick={() => act(
-              { title: `${ws ?? "Xưởng"} đã trả ${r.code}?`, confirmLabel: "Đã nhận về", description: <Summary rows={[["Sản phẩm", r.item], ["Khách muốn sửa", r.request]]} /> },
+              { title: `${ws ?? "Xưởng"} đã trả ${r.code}, QC kiểm tra đạt?`, confirmLabel: "Đã nhận về, kiểm tra xong", description: <Summary rows={[["Sản phẩm", r.item], ["Khách muốn sửa", r.request]]} /> },
               "customer.repair", A.customerRepairBack, r.id,
-            )}>Xưởng trả về</Button>
+            )}>Xưởng trả về · QC kiểm tra</Button>
           )}
           {r.status === "returned" && (
             <Button size="sm" onClick={() => act(
-              { title: `Trả ${r.code} cho khách?`, confirmLabel: "Đã trả khách", description: <Summary rows={[["Khách", `${r.customerName} · ${r.customerPhone}`], ["Sản phẩm", r.item]]} /> },
+              { title: `Trả ${r.code} cho sale?`, confirmLabel: "Trả sale · hoàn thành", description: <Summary rows={[["Khách", `${r.customerName} · ${r.customerPhone}`], ["Sản phẩm", r.item]]} /> },
               "customer.repair", A.customerRepairDone, r.id,
-            )}>Đã trả khách</Button>
+            )}>Trả sale · Hoàn thành</Button>
           )}
         </div>
       )}
@@ -236,7 +240,7 @@ export default function CustomerRepairsPage() {
         aside={
           <div className="grid w-full grid-cols-3 gap-2 min-[1500px]:w-auto">
             <StatCard className="min-[1500px]:min-w-[120px]" label="Đang xử lý" value={count("open")} unit="món" tone="brand" />
-            <StatCard className="min-[1500px]:min-w-[120px]" label="Chờ trả khách" value={count("returned")} unit="món" tone="brown" />
+            <StatCard className="min-[1500px]:min-w-[120px]" label="Chờ trả sale" value={count("returned")} unit="món" tone="brown" />
             <StatCard className="min-[1500px]:min-w-[120px]" label="Trễ hẹn" value={late} unit="món" tone={late ? "alert" : "default"} />
           </div>
         }

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  ChevronDown,
   ChartColumn, ClipboardList, History, Factory, Layers, LayoutDashboard, LogOut, PackageCheck, Scissors, Send, ShieldCheck, Shirt, Users,
   type LucideIcon,
 } from "lucide-react";
@@ -49,6 +50,9 @@ function Sidebar() {
   const cur = screenOf(path);
   const badges = navBadges(data, new Date());
   const items = NAV.filter(n => canView(role, n.screen));
+  // mỗi team bấm để mở / thu gọn; team chứa trang đang xem luôn mở
+  const [openTeams, setOpenTeams] = usePref<Record<string, boolean>>("nav:teams", { sx: true });
+  const curTeam = NAV.find(n => n.screen === cur)?.team;
 
   return (
     <aside className="flex min-w-0 flex-col gap-4 min-[820px]:sticky min-[820px]:top-4 min-[820px]:max-h-[calc(100dvh-2rem)] min-[820px]:self-start">
@@ -72,7 +76,13 @@ function Sidebar() {
           if (!list.length && !t.soon) return null;
           return (
           <div key={t.id} className="contents min-[820px]:flex min-[820px]:flex-col min-[820px]:gap-1 min-[820px]:[&:not(:first-child)]:mt-3">
-            <div className="eyebrow hidden px-2 pb-1 min-[820px]:block">{t.label}</div>
+            <button type="button" aria-expanded={openTeams[t.id] || curTeam === t.id}
+              onClick={() => setOpenTeams({ ...openTeams, [t.id]: !(openTeams[t.id] || curTeam === t.id) })}
+              className="eyebrow hidden items-center justify-between rounded-md px-2 py-1 text-left hover:bg-surface-3 min-[820px]:flex">
+              {t.label}
+              <ChevronDown className={cn("size-3.5 transition-transform duration-200", (openTeams[t.id] || curTeam === t.id) && "rotate-180")} />
+            </button>
+            {(openTeams[t.id] || curTeam === t.id) && <div className="reveal contents min-[820px]:flex min-[820px]:flex-col min-[820px]:gap-1">
             {list.map(n => {
           const active = n.screen === cur;
           const Icon = n.icon;
@@ -98,6 +108,7 @@ function Sidebar() {
           );
             })}
             {t.soon && <div className="hidden px-3 py-1 text-[12px] text-subtle italic min-[820px]:block">{t.soon}</div>}
+            </div>}
           </div>
           );
         })}

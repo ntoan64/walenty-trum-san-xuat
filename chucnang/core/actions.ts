@@ -227,8 +227,9 @@ export function createCustomerRepair(c: Ctx, a: CustomerRepairInput): Result {
   if (!item) return fail("Nhập sản phẩm khách gửi");
   if (!request) return fail("Ghi khách muốn sửa gì");
   const orderCode = (a.orderCode ?? "").trim().toUpperCase();
-  if (orderCode && !/^[A-Z0-9][A-Z0-9_-]{1,29}$/.test(orderCode)) return fail("Mã đơn hàng chỉ gồm chữ, số (vd SON15488)");
-  if (name.length > 60 || item.length > LIMITS.name || tooLong(a.size, 10) || request.length > LIMITS.text || tooLong(a.note, LIMITS.text)) return fail("Thông tin quá dài");
+  if (!orderCode) return fail("Nhập mã đơn hàng Sapo (vd SON15488)");
+  if (!/^[A-Z0-9][A-Z0-9_-]{1,29}$/.test(orderCode)) return fail("Mã đơn hàng chỉ gồm chữ, số (vd SON15488)");
+  if (name.length > 60 || item.length > LIMITS.name || tooLong(a.size ?? "", 10) || request.length > LIMITS.text || tooLong(a.note, LIMITS.text)) return fail("Thông tin quá dài");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(a.promisedDate)) return fail("Chọn ngày hẹn trả khách");
   const promisedAt = new Date(`${a.promisedDate}T23:59:59+07:00`);
   if (isNaN(promisedAt.getTime()) || promisedAt < c.now) return fail("Ngày hẹn trả phải từ hôm nay trở đi");
@@ -238,12 +239,22 @@ export function createCustomerRepair(c: Ctx, a: CustomerRepairInput): Result {
   const code = `KS-${String(n).padStart(3, "0")}`;
   c.s.customerRepairs ??= [];
   c.s.customerRepairs.push({
-    id: code, code, customerName: name, customerPhone: phone, ...(orderCode ? { orderCode } : {}), item, size: a.size.trim().toUpperCase(), request,
-    note: a.note?.trim() || undefined, receivedAt: c.now, promisedAt, status: "received",
-    history: [{ at: tick(c), by: c.me, text: `Nhận từ khách: ${request}` }],
+    id: code, code, customerName: name, customerPhone: phone, ...(orderCode ? { orderCode } : {}), item, size: (a.size ?? "").trim().toUpperCase(), request,
+    note: a.note?.trim() || undefined, receivedAt: c.now, promisedAt, status: "requested",
+    history: [{ at: tick(c), by: c.me, text: `Sale gửi yêu cầu sửa: ${request}` }],
   });
-  notify(c, ["quanly", "kho"], `🧵 Đồ khách gửi sửa ${code}${orderCode ? ` (ĐH ${orderCode})` : ""}: ${item}${a.size ? ` (${a.size})` : ""}\nKhách ${name} · muốn sửa: ${request}\nHẹn trả ${fmtD(promisedAt)}.`);
-  return ok(`Đã nhận ${code} từ khách ${name}`, code);
+  notify(c, ["quanly", "kho", "qc"], `🧵 Yêu cầu sửa đồ khách ${code}${orderCode ? ` (ĐH ${orderCode})` : ""}: ${item}${a.size ? ` (${a.size})` : ""}\nKhách ${name} · muốn sửa: ${request}\nHẹn trả ${fmtD(promisedAt)}.`);
+  return ok(`Đã gửi yêu cầu ${code}, chờ QC nhận hàng`, code);
+}
+
+// QC nhận đồ từ sale
+export function receiveCustomerRepair(c: Ctx, id: string): Result {
+  const r = (c.s.customerRepairs ?? []).find(x => x.id === id);
+  if (!r) return fail("Không tìm thấy phiếu");
+  if (r.status !== "requested") return fail("Phiếu không ở bước chờ QC nhận");
+  r.status = "received"; r.receivedAt = c.now;
+  r.history.push({ at: tick(c), by: c.me, text: "QC đã nhận hàng từ sale" });
+  return ok(`${r.code}: QC đã nhận hàng`);
 }
 
 function getCR(c: Ctx, id: string) {
@@ -266,7 +277,7 @@ export function customerRepairBack(c: Ctx, id: string): Result {
   if (!r) return fail("Không tìm thấy phiếu");
   if (r.status !== "sent") return fail("Phiếu chưa gửi xưởng");
   r.status = "returned"; r.returnedAt = c.now;
-  r.history.push({ at: tick(c), by: c.me, text: `${wsName(c.s, r.workshop ?? "")} trả về, chờ trả khách` });
+  r.history.push({ at: tick(c), by: c.me, text: `${wsName(c.s, r.workshop ?? "")} trả về, QC đã kiểm tra, chờ trả sale` });
   notify(c, ["quanly", "kho"], `📦 ${r.code} đã sửa xong, chờ trả khách ${r.customerName} (${r.customerPhone}).`);
   return ok(`${r.code}: xưởng đã trả về`);
 }
@@ -276,8 +287,8 @@ export function customerRepairDone(c: Ctx, id: string): Result {
   if (!r) return fail("Không tìm thấy phiếu");
   if (r.status !== "returned") return fail("Xưởng chưa trả đồ về");
   r.status = "done"; r.doneAt = c.now;
-  r.history.push({ at: tick(c), by: c.me, text: "Đã trả khách" });
-  return ok(`${r.code}: đã trả khách ${r.customerName}`);
+  r.history.push({ at: tick(c), by: c.me, text: "Đã trả sale, hoàn thành" });
+  return ok(`${r.code}: đã trả sale, hoàn thành`);
 }
 
 // Nhân viên tự ghi chú thêm bất cứ lúc nào (khách đổi yêu cầu, xưởng báo…)
@@ -1150,10 +1161,11 @@ export const ACTIONS: Record<string, [Action | null, (c: Ctx, ...args: any[]) =>
   createWorkshop: ["workshop.manage", createWorkshop, "Thêm xưởng"],
   updateWorkshop: ["workshop.manage", updateWorkshop, "Sửa thông tin xưởng"],
   toggleWorkshop: ["workshop.manage", toggleWorkshop, "Ngừng / hợp tác lại xưởng"],
-  createCustomerRepair: ["customer.repair", createCustomerRepair, "Nhận đồ khách gửi sửa"],
+  createCustomerRepair: ["customer.repair", createCustomerRepair, "Sale gửi yêu cầu sửa đồ khách"],
+  receiveCustomerRepair: ["customer.repair", receiveCustomerRepair, "QC nhận đồ khách từ sale"],
   sendCustomerRepair: ["customer.repair", sendCustomerRepair, "Gửi đồ khách cho xưởng"],
-  customerRepairBack: ["customer.repair", customerRepairBack, "Xưởng trả đồ khách"],
-  customerRepairDone: ["customer.repair", customerRepairDone, "Trả đồ cho khách"],
+  customerRepairBack: ["customer.repair", customerRepairBack, "Xưởng trả đồ khách, QC kiểm tra"],
+  customerRepairDone: ["customer.repair", customerRepairDone, "Trả đồ khách cho sale"],
   noteCustomerRepair: ["customer.repair", noteCustomerRepair, "Ghi chú đồ khách"],
   createProduct: ["product.manage", createProduct, "Thêm sản phẩm"],
   setProductStatus: ["product.manage", setProductStatus, "Đổi tình trạng sản phẩm"],

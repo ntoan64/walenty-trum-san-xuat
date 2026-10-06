@@ -269,7 +269,8 @@ export interface AuditEntry {
 }
 
 // Đồ khách gửi sửa: cửa hàng nhận từ khách → gửi xưởng → xưởng trả về → trả khách
-export type CustomerRepairStatus = "received" | "sent" | "returned" | "done"
+// Sale tạo yêu cầu → QC nhận hàng → gửi xưởng → xưởng trả, QC kiểm → trả sale (hoàn thành)
+export type CustomerRepairStatus = "requested" | "received" | "sent" | "returned" | "done"
 
 export interface CustomerRepair {
   id: string

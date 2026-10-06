@@ -33,7 +33,8 @@ export default function OverviewPage() {
     ...bs.filter(x => x.b.pendingQC).map(({ o, b }) => ({ tone: "info" as const, title: `${o.code}: ${b.pendingQC} cái chờ QC`, sub: `${prodOf(s, o).name} · ${wsName(s, o.workshop)}`, href: `/lenh-san-xuat/${o.id}`, screen: "orders" as const })),
     ...open.filter(o => o.loss && !o.lossApproved).map(o => ({ tone: "warn" as const, title: `${o.code}: hao hụt ${o.loss} cái chờ duyệt`, sub: `${wsName(s, o.workshop)} · ${((o.loss / o.qty) * 100).toFixed(1).replace(".", ",")}% (cho phép 2%)`, href: `/lenh-san-xuat/${o.id}`, screen: "orders" as const })),
     ...(s.customerRepairs ?? []).filter(r => r.status !== "done" && r.promisedAt < now).map(r => ({ tone: "bad" as const, title: `Đồ khách ${r.code} trễ hẹn trả`, sub: `${r.customerName} · ${r.item} · hẹn ${fmtD(r.promisedAt)}`, href: "/sua-cho-khach", screen: "customer" as const })),
-    ...(s.customerRepairs ?? []).filter(r => r.status === "returned").map(r => ({ tone: "info" as const, title: `${r.code}: sửa xong, chờ trả khách`, sub: `${r.customerName} · ${r.customerPhone}`, href: "/sua-cho-khach", screen: "customer" as const })),
+    ...(s.customerRepairs ?? []).filter(r => r.status === "requested").map(r => ({ tone: "warn" as const, title: `${r.code}: sale gửi yêu cầu sửa, chờ QC nhận`, sub: `${r.orderCode ?? ""} · ${r.item}`, href: "/sua-cho-khach", screen: "customer" as const })),
+    ...(s.customerRepairs ?? []).filter(r => r.status === "returned").map(r => ({ tone: "info" as const, title: `${r.code}: QC đã kiểm, chờ trả sale`, sub: `${r.orderCode ?? ""} · ${r.customerName}`, href: "/sua-cho-khach", screen: "customer" as const })),
     ...lowMaterials(s).map(m => ({ tone: "bad" as const, title: `${m.code} sắp hết`, sub: `${m.name}: còn ${nf(m.stock, 1)} ${m.unit}, báo hết dưới ${nf(m.minStock)}`, href: "/kho-phu-lieu", screen: "materials" as const })),
   ];
 
