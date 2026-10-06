@@ -13,6 +13,7 @@ import { Collapsible } from "./collapsible";
 import { useDraft } from "@/lib/use-draft";
 import { Summary } from "./confirm-provider";
 import { MaterialPicker } from "./material-picker";
+import { SearchPicker } from "./search-picker";
 
 const NEW = "__new__";
 const CATS = Object.entries(MATERIAL_CATEGORIES) as [MaterialCategory, string][];
@@ -153,7 +154,10 @@ export function ImportTable() {
         <div className="flex flex-wrap items-end justify-between gap-3 p-4 md:px-5">
           <div className="w-full max-w-xs">
             <label htmlFor="ip-sup" className="mb-1 block text-xs font-medium text-muted-foreground">Nhà cung cấp</label>
-            <input id="ip-sup" className="field-input" value={supplier} onChange={e => setSupplier(e.target.value)} />
+            <SearchPicker id="ip-sup" label="Nhà cung cấp" placeholder="Gõ tìm trong Xưởng may & NCC…"
+              value={s.workshops.find(w => w.name === supplier)?.id}
+              items={s.workshops.filter(w => w.active).map(w => ({ id: w.id, label: w.name, sub: w.area, search: [w.contactName, ...(w.aliases ?? [])] }))}
+              onPick={id => setSupplier(s.workshops.find(w => w.id === id)?.name ?? "")} />
           </div>
           <Button type="submit">Nhập kho{rows.length > 1 ? ` ${rows.length} dòng` : ""}</Button>
         </div>

@@ -109,7 +109,7 @@ describe("3. Xưởng, phụ liệu, sản phẩm", () => {
 
   it("phiếu nhập nhiều dòng tạo phụ liệu mới với mã tự sinh + giá BQ đúng", async () => {
     await ok(kho, "importBatch", {
-      supplier: "Phú Thịnh",
+      supplier: "Xưởng A", // phải có trong Xưởng may & NCC
       lines: [
         { newMaterial: { name: "Vải kate trắng", unit: "mét", category: "vai", minStock: 50, okStock: 200 }, qty: 100, price: 50000 },
         { newMaterial: { name: "Nút nhựa 12mm", unit: "cái", category: "nut", minStock: 500, okStock: 2000 }, qty: 3000, price: 300 },

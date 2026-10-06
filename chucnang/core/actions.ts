@@ -594,6 +594,8 @@ export interface ImportLine { materialId?: string; newMaterial?: NewMaterialInpu
 export function importBatch(c: Ctx, a: { supplier: string; lines: ImportLine[] }): Result {
   if (!a.lines.length) return fail("Phiếu nhập chưa có dòng nào");
   if (a.lines.length > LIMITS.lines) return fail(`Một phiếu tối đa ${LIMITS.lines} dòng`);
+  // nhà cung cấp phải có trong danh sách Xưởng may & NCC
+  if (a.supplier.trim() && !c.s.workshops.some(w => w.name === a.supplier.trim())) return fail(`${a.supplier} chưa có trong Xưởng may & NCC, thêm ở trang đó trước`);
   const ids = new Set<string>();
   for (const [i, l] of a.lines.entries()) {
     const row = `Dòng ${i + 1}: `;
