@@ -224,6 +224,7 @@ export interface RepairTicket {
   dueAt: Date
   status: RepairStatus
   items?: { size: string; defect: string; qty: number; photos?: string[] }[] // chi tiết theo size
+  backSizes?: { size: string; qty: number }[] // xưởng đã trả lại theo size (trả nhiều đợt được)
   requc?: { pass: number; again: number; hong: number; by: string; at: Date } | null
   history: { at: Date; by: string; text: string }[]
   parent?: string

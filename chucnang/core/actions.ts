@@ -3,7 +3,7 @@
 import {
   applyImport, applyIssue, byId, round2, calcBalance, canClose, DAY, REPAIR_DUE_DAYS,
   MATERIAL_CATEGORIES, MATERIAL_STATUS, nextMaterialCode, colorsOf, forColor, costBreakdown, bomOf, remainingIssue, okLevel, isLive, PRODUCT_STATUS, needFor, shortages, unitCost, unusableMaterials, sizeProgress, validateDefectLines, validateQC, validateRequc,
-  type BomLine, type Costing, type WorkshopRate, type DefectLine, type EventType, type SizeQty, type ItemStatus, type Material, type MaterialCategory, type ProductionOrder, type ProductVariant, type Role, type Action,
+  type BomLine, type Costing, type RepairTicket, type WorkshopRate, type DefectLine, type EventType, type SizeQty, type ItemStatus, type Material, type MaterialCategory, type ProductionOrder, type ProductVariant, type Role, type Action,
 } from "./index";
 import type { DataState } from "./state";
 import { buildReminders } from "./reminders";
@@ -973,6 +973,38 @@ export function repairStatus(c: Ctx, id: string, to: "received" | "returned"): R
   return ok(`${r.code}: xưởng đã nhận`);
 }
 
+// Số lượng phiếu sửa theo size (phiếu cũ không có size thì gộp 1 dòng "—")
+export function repairSizes(r: RepairTicket) {
+  const m = new Map<string, number>();
+  for (const it of r.items?.length ? r.items : [{ size: "—", qty: r.qty }]) m.set(it.size, (m.get(it.size) ?? 0) + it.qty);
+  return [...m].map(([size, qty]) => ({ size, qty, back: (r.backSizes ?? []).filter(x => x.size === size).reduce((t, x) => t + x.qty, 0) }));
+}
+
+// Xưởng trả hàng sửa theo size, trả nhiều đợt được; trả đủ mọi size thì chuyển chờ QC lại
+export function repairReturn(c: Ctx, id: string, sizes: { size: string; qty: number }[]): Result {
+  const r = byId(c.s.repairs, id);
+  if (!r) return fail("Không tìm thấy phiếu");
+  if (r.status !== "received") return fail("Xưởng chưa nhận phiếu này");
+  const rows = repairSizes(r);
+  const got = (sizes ?? []).filter(x => x.qty > 0);
+  if (!got.length) return fail("Nhập số trả lại ít nhất 1 size");
+  for (const x of got) {
+    const row = rows.find(y => y.size === x.size);
+    if (!row) return fail(`Phiếu không có size ${x.size}`);
+    if (!isInt(x.qty) || x.qty > row.qty - row.back) return fail(`Size ${x.size} chỉ còn ${row.qty - row.back} cái chưa trả`);
+  }
+  r.backSizes = [...(r.backSizes ?? []), ...got.map(x => ({ size: x.size, qty: x.qty }))];
+  const total = got.reduce((t, x) => t + x.qty, 0);
+  const left = repairSizes(r).reduce((t, x) => t + x.qty - x.back, 0);
+  r.history.push({ at: tick(c), by: c.me, text: `Xưởng trả ${got.map(x => `${x.size} ${x.qty}`).join(", ")}${left ? ` (còn ${left} cái chưa trả)` : ", đã đủ"}` });
+  if (left > 0) return ok(`${r.code}: đã nhận ${total} cái, còn ${left} cái chưa trả`);
+  r.status = "returned";
+  const o = getOrder(c, r.order)!;
+  event(c, "back", o, r.qty, r.round);
+  notify(c, ["qc"], `🔁 ${wsName(c.s, r.workshop)} đã trả đủ ${r.qty} cái của phiếu ${r.code}, chờ QC lại.`);
+  return ok(`${r.code}: đã trả đủ, chờ QC lại`);
+}
+
 export function requc(c: Ctx, id: string, q: { pass: number; again: number; hong: number }): Result {
   const r = byId(c.s.repairs, id);
   if (!r || r.status !== "returned") return fail("Phiếu chưa được xưởng trả lại");
@@ -1095,6 +1127,7 @@ export const ACTIONS: Record<string, [Action | null, (c: Ctx, ...args: any[]) =>
   createOrders: ["order.create", createOrders, "Tạo lệnh sản xuất"],
   issueMaterials: ["order.create", issueMaterials, "Xuất phụ liệu cho lệnh"],
   setCostRatio: ["product.manage", setCostRatio, "Sửa tỉ lệ cost mục tiêu"],
+  repairReturn: ["repair.status", repairReturn, "Nhận hàng sửa xưởng trả theo size"],
   setProductBom: ["product.manage", setProductBom, "Sửa định mức sản phẩm"],
   createOrder: ["order.create", createOrder, "Tạo lệnh sản xuất"],
   confirmCut: ["order.cut", confirmCut, "Xưởng đã nhận nguyên phụ liệu"],

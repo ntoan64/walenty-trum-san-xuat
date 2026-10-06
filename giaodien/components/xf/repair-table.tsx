@@ -2,6 +2,7 @@
 
 import { Fragment, useState } from "react";
 import { byId, isRepairLate, validateRequc, type RepairTicket } from "@core";
+import { repairSizes } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
 import { fmtD, fmtDT } from "@/lib/format";
 import { useStore, A } from "@/lib/store";
@@ -55,6 +56,38 @@ function RequcForm({ r }: { r: RepairTicket }) {
   );
 }
 
+// Xưởng trả hàng sửa theo size: ô mặc định 0, hiện còn thiếu từng size; trả nhiều đợt được
+function ReturnForm({ r, ws }: { r: RepairTicket; ws: string }) {
+  const act = useConfirmAction();
+  const rows = repairSizes(r);
+  const [v, setV] = useState<Record<string, string>>({});
+  const got = rows.map(x => ({ size: x.size, qty: Math.max(0, Math.floor(+(v[x.size] ?? 0) || 0)) }));
+  const total = got.reduce((t, x) => t + x.qty, 0);
+  const send = async () => {
+    const res = await act({ title: `${ws} trả hàng sửa ${r.code}?`, confirmLabel: "Nhận hàng",
+      description: <Summary rows={[["Phiếu", r.code], ["Nhận theo size", got.filter(x => x.qty).map(x => `${x.size}: ${x.qty}`).join(" · ")], ["Tổng", `${total} cái`]]} /> },
+      "repair.status", A.repairReturn, r.id, got.filter(x => x.qty));
+    if (res?.ok) setV({});
+  };
+  return (
+    <div className="flex min-w-[260px] flex-col gap-1.5">
+      <div className="flex flex-wrap gap-1.5">
+        {rows.map(x => {
+          const left = x.qty - x.back - (got.find(y => y.size === x.size)?.qty ?? 0);
+          return (
+            <label key={x.size} className="flex w-[78px] flex-col gap-0.5 rounded-md bg-surface-2 p-1.5 text-[11px]">
+              <span className="flex justify-between"><b className="text-brand">{x.size}</b><span className={left > 0 ? "text-bad" : left < 0 ? "font-bold text-bad" : "text-ok"}>{left > 0 ? `thiếu ${left}` : left < 0 ? `dư ${-left}` : "đủ"}</span></span>
+              <input type="number" min={0} step={1} inputMode="numeric" placeholder="0" aria-label={`Trả size ${x.size}`} disabled={x.back >= x.qty}
+                className="field-input num !min-h-7 !px-1.5 !py-0.5 text-[12px]" value={v[x.size] ?? ""} onChange={e => setV({ ...v, [x.size]: e.target.value })} />
+            </label>
+          );
+        })}
+      </div>
+      <Button size="sm" variant="secondary" disabled={!total} onClick={send}>Xưởng trả {total ? `${total} cái` : ""}</Button>
+    </div>
+  );
+}
+
 function RepairAction({ r }: { r: RepairTicket }) {
   const { can, data } = useStore();
   const act = useConfirmAction();
@@ -72,7 +105,7 @@ function RepairAction({ r }: { r: RepairTicket }) {
   }
   if (!can("repair.status")) return <span className="text-xs text-muted-foreground">Chỉ xem</span>;
   if (r.status === "sent") return <Button size="sm" variant="secondary" onClick={() => act({ title: `${ws} đã nhận phiếu ${r.code}?`, confirmLabel: "Xác nhận", description: <Summary rows={[["Phiếu", r.code], ["Số lượng", `${r.qty} cái`], ["Hạn trả", fmtD(r.dueAt)]]} /> }, "repair.status", A.repairStatus, r.id, "received")}>Xưởng đã nhận</Button>;
-  return <Button size="sm" variant="secondary" onClick={() => act({ title: `${ws} đã trả lại hàng sửa?`, confirmLabel: "Xác nhận", description: <Summary rows={[["Phiếu", r.code], ["Số lượng", `${r.qty} cái`], ["Tiếp theo", "Team QC kiểm lại"]]} /> }, "repair.status", A.repairStatus, r.id, "returned")}>Xưởng trả lại</Button>;
+  return <ReturnForm r={r} ws={ws} />;
 }
 
 export function RepairTable({ list, empty = "Không có phiếu trả sửa." }: { list: RepairTicket[]; empty?: string }) {
@@ -98,7 +131,10 @@ export function RepairTable({ list, empty = "Không có phiếu trả sửa." }:
                 <td className="num whitespace-nowrap">{byId(data.orders, r.order)?.code}</td>
                 <td className="whitespace-nowrap">{wsName(data, r.workshop)}</td>
                 <td className="r num">{r.qty}</td>
-                <td className="text-[13px]">{r.items?.length ? r.items.map((x, k) => <div key={k} className="whitespace-nowrap"><b>{x.size}</b> · {x.defect} ×{x.qty} <PhotoStrip photos={x.photos} size={28} className="ml-1" /></div>) : <>{r.defect} <PhotoStrip photos={r.photos} size={28} className="ml-1" /></>}</td>
+                <td className="text-[13px]">
+                  {r.items?.length ? r.items.map((x, k) => <div key={k} className="whitespace-nowrap"><b>{x.size}</b> · {x.defect} ×{x.qty} <PhotoStrip photos={x.photos} size={28} className="ml-1" /></div>) : <>{r.defect} <PhotoStrip photos={r.photos} size={28} className="ml-1" /></>}
+                  {!!r.backSizes?.length && <div className="mt-0.5 text-[11.5px] text-ok">Đã trả: {repairSizes(r).filter(x => x.back).map(x => `${x.size} ${x.back}/${x.qty}`).join(" · ")}</div>}
+                </td>
                 <td className="num whitespace-nowrap">{fmtD(r.sentAt)} → {fmtD(r.dueAt)}</td>
                 <td><RepairStatus r={r} now={now} /></td>
                 <td><RepairAction r={r} /></td>

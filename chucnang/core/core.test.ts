@@ -292,3 +292,18 @@ describe('xuất phụ liệu từng phần', () => {
     expect(A.confirmCut(c, id).ok).toBe(true)
   })
 })
+
+describe('phiếu trả sửa theo size', () => {
+  it('xưởng trả từng đợt theo size, đủ mới chờ QC lại', async () => {
+    const A = await import('./actions')
+    const r = { id: 'R-001', code: 'R-001', order: 'LSX-1', workshop: 'w', qty: 3, defect: 'x', photos: [], round: 1, sentAt: new Date(), dueAt: new Date(), status: 'received' as const,
+      items: [{ size: 'S', defect: 'x', qty: 1 }, { size: 'M', defect: 'y', qty: 2 }], history: [] }
+    const s = { repairs: [r], orders: [{ id: 'LSX-1', code: 'LSX-1', workshop: 'w', product: 'p', qty: 3 }], workshops: [], events: [], notifications: [], users: [], seq: { id: 1 } } as never
+    const c = { s, me: 'Huỳnh', now: new Date() } as never
+    expect(A.repairReturn(c, 'R-001', [{ size: 'M', qty: 3 }]).ok).toBe(false) // M chỉ có 2
+    expect(A.repairReturn(c, 'R-001', [{ size: 'M', qty: 2 }]).ok).toBe(true)
+    expect((r as { status: string }).status).toBe('received') // còn S chưa trả
+    expect(A.repairReturn(c, 'R-001', [{ size: 'S', qty: 1 }]).ok).toBe(true)
+    expect((r as { status: string }).status).toBe('returned')
+  })
+})
