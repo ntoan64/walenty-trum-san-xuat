@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { matches } from "@/lib/search";
 import { SearchBox } from "@/components/xf/search-box";
 import { useStore, A } from "@/lib/store";
-import { useAction, useConfirmAction } from "@/lib/use-action";
+import { useAskAction, useConfirmAction } from "@/lib/use-action";
 import { fmtD, nf, vnd } from "@/lib/format";
 import { Summary } from "@/components/xf/confirm-provider";
 import { Collapsible } from "@/components/xf/collapsible";
@@ -112,7 +112,7 @@ function CreateProduct() {
 /* ---------- Chi tiết 1 sản phẩm khi bấm vào dòng ---------- */
 /* ---------- Sửa size + SKU của sản phẩm đã có ---------- */
 function VariantsDialog({ p, onClose }: { p: Product; onClose: () => void }) {
-  const act = useAction();
+  const act = useAskAction();
   const [list, setList] = useState<ProductVariant[]>(p.variants?.length ? p.variants : []);
   const [busy, setBusy] = useState(false);
   const save = async () => {

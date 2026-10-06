@@ -3,7 +3,7 @@
 import { toast } from "sonner";
 import type { Action } from "@core";
 import { useStore } from "./store";
-import type { Ctx, Result } from "./actions";
+import { ACTIONS, type Ctx, type Result } from "./actions";
 import { useConfirm, type ConfirmOptions } from "@/components/xf/confirm-provider";
 
 type Fn<Args extends unknown[]> = (c: Ctx, ...a: Args) => Result;
@@ -46,5 +46,16 @@ export function useConfirmAction() {
     if (!test.ok) return toastError(test.error);
     if (!(await ask(opts))) return null;
     return act(perm, fn, ...args);
+  };
+}
+
+// Nút lưu nào cũng hỏi lại trước khi ghi: tiêu đề lấy theo tên thao tác (vd "Sửa giá phiên bản?")
+const LABEL = new Map<unknown, string>(Object.values(ACTIONS).map(([, fn, label]) => [fn, label]));
+export function useAskAction() {
+  const confirmAct = useConfirmAction();
+  return async <Args extends unknown[]>(perm: Action | null, fn: Fn<Args>, ...args: Args): Promise<Result> => {
+    const label = LABEL.get(fn) ?? "Lưu thay đổi";
+    const r = await confirmAct({ title: `${label}?`, confirmLabel: "Đồng ý", description: "Bạn có chắc chắn muốn thực hiện thao tác này không?" }, perm, fn, ...args);
+    return r ?? { ok: false, error: "Đã hủy" };
   };
 }

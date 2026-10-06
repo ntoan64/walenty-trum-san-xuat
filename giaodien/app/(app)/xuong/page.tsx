@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { matches } from "@/lib/search";
 import { SearchBox } from "@/components/xf/search-box";
 import { useStore, A } from "@/lib/store";
-import { useAction, useConfirmAction } from "@/lib/use-action";
+import { useAskAction, useConfirmAction } from "@/lib/use-action";
 import { useDraft } from "@/lib/use-draft";
 import { Summary } from "@/components/xf/confirm-provider";
 import { Collapsible } from "@/components/xf/collapsible";
@@ -66,7 +66,7 @@ function CreateWorkshop() {
 
 /* ---------- Sửa xưởng ---------- */
 function EditWorkshop({ w, onClose }: { w: Workshop; onClose: () => void }) {
-  const act = useAction();
+  const act = useAskAction();
   const [f, setF] = useState<WsForm>({ name: w.name, area: w.area, contactName: w.contactName, phone: w.phone });
   const [busy, setBusy] = useState(false);
   const save = async () => {

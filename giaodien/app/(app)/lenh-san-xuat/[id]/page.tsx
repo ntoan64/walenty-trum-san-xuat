@@ -11,7 +11,7 @@ import {
 } from "@core";
 import { Button } from "@/components/ui/button";
 import { useStore, A } from "@/lib/store";
-import { useAction, useConfirmAction } from "@/lib/use-action";
+import { useAskAction, useConfirmAction } from "@/lib/use-action";
 import { Summary } from "@/components/xf/confirm-provider";
 import { fmtD, fmtDT, isoDateVN, nf, pct, vnd } from "@/lib/format";
 import { prodOf, repairsOf, wsName } from "@/lib/actions";
@@ -320,7 +320,7 @@ function LossForm({ o, max }: { o: ProductionOrder; max: number }) {
 /* ---------- Admin: sửa lệnh ---------- */
 function EditOrderDialog({ o, onClose }: { o: ProductionOrder; onClose: () => void }) {
   const { data: s } = useStore();
-  const act = useAction();
+  const act = useAskAction();
   const beforeCut = o.step === "cut";
   const [due, setDue] = useState(isoDateVN(o.dueAt));
   const [ws, setWs] = useState(o.workshop);
@@ -383,7 +383,7 @@ function EditOrderDialog({ o, onClose }: { o: ProductionOrder; onClose: () => vo
 /* ---------- Admin: hủy lệnh ---------- */
 function CancelOrderDialog({ o, onClose }: { o: ProductionOrder; onClose: () => void }) {
   const { data: s } = useStore();
-  const act = useAction();
+  const act = useAskAction();
   const beforeCut = o.step === "cut";
   const fgQty = s.finishedTxns.filter(t => t.order === o.code).reduce((t, x) => t + x.qty, 0);
   const [reason, setReason] = useState("");
@@ -428,7 +428,7 @@ function CancelOrderDialog({ o, onClose }: { o: ProductionOrder; onClose: () => 
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: s, can } = useStore();
-  const act = useAction();
+  const act = useAskAction();
   const actC = useConfirmAction();
   const [adminDialog, setAdminDialog] = useState<"edit" | "cancel" | null>(null);
   const o = byId(s.orders, decodeURIComponent(id));

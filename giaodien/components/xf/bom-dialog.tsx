@@ -6,14 +6,14 @@ import { bomOf, byId, type Product } from "@core";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useStore, A } from "@/lib/store";
-import { useAction } from "@/lib/use-action";
+import { useAskAction } from "@/lib/use-action";
 import { NumberField } from "./basics";
 
 // Khai báo / sửa định mức phụ liệu + tiền công cho sản phẩm (vd mẫu nhập từ Sapo chưa có)
 // color: định mức riêng cho màu đó (vải khác màu); không truyền = định mức chung
 export function BomDialog({ p, color, onClose }: { p: Product; color?: string; onClose: () => void }) {
   const { data: s } = useStore();
-  const act = useAction();
+  const act = useAskAction();
   const usable = s.materials.filter(m => m.status !== "discontinued");
   const [labor, setLabor] = useState(String(p.laborCost || ""));
   const cur = color ? bomOf(p, color) : p.bom;

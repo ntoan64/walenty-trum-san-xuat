@@ -11,7 +11,7 @@ import {
 import { matches } from "@/lib/search";
 import { SearchBox } from "@/components/xf/search-box";
 import { useStore, A } from "@/lib/store";
-import { useAction, useConfirmAction } from "@/lib/use-action";
+import { useAskAction, useConfirmAction } from "@/lib/use-action";
 import { fmtD, nf, vnd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Summary } from "@/components/xf/confirm-provider";
@@ -26,7 +26,7 @@ const CATS = Object.entries(MATERIAL_CATEGORIES) as [MaterialCategory, string][]
 
 /* ---------- Sửa phụ liệu: mã, tên, đơn vị, loại ---------- */
 function EditMaterialDialog({ m, onClose }: { m: Material; onClose: () => void }) {
-  const act = useAction();
+  const act = useAskAction();
   const [f, setF] = useState({ code: m.code, name: m.name, unit: m.unit, category: m.category });
   const [busy, setBusy] = useState(false);
   const [img, setImg] = useState<string[]>(m.image ? [m.image] : []);

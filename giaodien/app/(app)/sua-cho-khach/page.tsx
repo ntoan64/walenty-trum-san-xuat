@@ -6,7 +6,7 @@ import { byId, DAY, type CustomerRepair, type CustomerRepairStatus } from "@core
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useStore, A } from "@/lib/store";
-import { useAction, useConfirmAction } from "@/lib/use-action";
+import { useAskAction, useConfirmAction } from "@/lib/use-action";
 import { useDraft } from "@/lib/use-draft";
 import { daysLate, fmtD, fmtDT, isoDateVN } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -82,7 +82,7 @@ function ReceiveFromCustomer() {
 /* ---------- Chọn xưởng để gửi ---------- */
 function SendDialog({ r, onClose }: { r: CustomerRepair; onClose: () => void }) {
   const { data: s } = useStore();
-  const act = useAction();
+  const act = useAskAction();
   const list = s.workshops.filter(w => w.active);
   const [ws, setWs] = useState(list[0]?.id ?? "");
   const [busy, setBusy] = useState(false);
@@ -117,7 +117,7 @@ function SendDialog({ r, onClose }: { r: CustomerRepair; onClose: () => void }) 
 
 /* ---------- Ghi chú thêm ---------- */
 function NoteDialog({ r, onClose }: { r: CustomerRepair; onClose: () => void }) {
-  const act = useAction();
+  const act = useAskAction();
   const [text, setText] = useDraft(`customer:note:${r.id}`, "");
   const [busy, setBusy] = useState(false);
   const save = async () => {

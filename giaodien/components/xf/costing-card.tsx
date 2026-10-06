@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Calculator, Pencil } from "lucide-react";
 import { bomOf, byId, colorsOf, costBreakdown, costRatio, formulaPrice, priceRange, type Product } from "@core";
 import { useStore, A } from "@/lib/store";
-import { useAction } from "@/lib/use-action";
+import { useAskAction } from "@/lib/use-action";
 import { nf, pct, vnd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { BomDialog } from "./bom-dialog";
@@ -20,7 +20,7 @@ function Row({ label, sub, value, strong }: { label: React.ReactNode; sub?: Reac
 
 // Tỉ lệ cost mục tiêu (%), sửa được
 function TargetRatio({ productId, color, target, editable }: { productId: string; color?: string; target?: number; editable: boolean }) {
-  const act = useAction();
+  const act = useAskAction();
   const [v, setV] = useState(target ? String(Math.round(target * 1000) / 10) : "");
   const [busy, setBusy] = useState(false);
   const n = +v.replace(",", ".") || 0;

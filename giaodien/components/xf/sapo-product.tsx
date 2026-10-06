@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ImageOff } from "lucide-react";
 import { type Product, type ProductVariant } from "@core";
 import { useStore, A } from "@/lib/store";
-import { useAction } from "@/lib/use-action";
+import { useAskAction } from "@/lib/use-action";
 import { vnd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -36,7 +36,7 @@ export const fmtRange = (r: [number, number] | null) => (!r ? "—" : r[0] === r
 
 // 1 dòng phiên bản: giá bán lẻ + giá nhập hiện tại, sửa được
 function VariantRow({ p, v, manage }: { p: Product; v: ProductVariant; manage: boolean }) {
-  const act = useAction();
+  const act = useAskAction();
   const [f, setF] = useState({ price: String(v.price ?? ""), cost: String(v.cost ?? "") });
   const [busy, setBusy] = useState(false);
   const dirty = (+f.price || 0) !== (v.price ?? 0) || (+f.cost || 0) !== (v.cost ?? 0);
