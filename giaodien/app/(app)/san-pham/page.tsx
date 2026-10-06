@@ -225,7 +225,7 @@ export default function ProductsPage() {
     .map((p, i) => ({ p, i, mat: materialCost(p, s.materials), cost: costOf(p, s.materials), stock: stock[p.id] ?? 0 }))
     .filter(r => status === "all" || r.p.status === status)
     .filter(r => !cat || r.p.category === cat)
-    .filter(r => matches(q, r.p.sku, r.p.name, r.p.category, r.p.brand, r.p.tags?.join(" "),
+    .filter(r => matches(q, r.p.sku, r.p.name, r.p.category, r.p.tags?.join(" "),
       r.p.variants?.map(v => `${v.sku} ${v.barcode ?? ""} ${v.size} ${v.color ?? ""}`).join(" "), r.p.bom.map(l => s.materials.find(m => m.id === l.material)?.name).join(" ")))
     .sort((a, b) =>
       sort === "name" ? a.p.name.localeCompare(b.p.name, "vi")
@@ -312,7 +312,7 @@ export default function ProductsPage() {
             <thead>
               <tr>
                 <th className="w-8" />
-                <th className="w-12">Ảnh</th><th>Sản phẩm</th><th>Loại</th><th>Nhãn hiệu</th>
+                <th className="w-12">Ảnh</th><th>Sản phẩm</th><th>Loại</th>
                 <th className="r">Giá bán lẻ</th><th className="r">Giá vốn / cái</th><th>Tình trạng</th>
               </tr>
             </thead>
@@ -338,7 +338,6 @@ export default function ProductsPage() {
                         <div className="num text-[11.5px] text-subtle">{p.variants?.[0]?.sku ?? p.sku}{p.variants && p.variants.length > 1 && ` · ${p.variants.length} phiên bản`}</div>
                       </td>
                       <td className="text-[12.5px] whitespace-nowrap">{p.category ?? <span className="text-subtle">—</span>}</td>
-                      <td className="text-[12.5px] text-muted-foreground">{p.brand ?? ""}</td>
                       <td className="r num whitespace-nowrap">{fmtRange(priceRange(p.variants?.map(v => v.price) ?? []))}</td>
                       <td className="r num whitespace-nowrap">
                         <b className="text-brand">{vnd(cost)}</b>
@@ -356,7 +355,7 @@ export default function ProductsPage() {
                     {isOpen && (
                       <tr className="hover:!bg-transparent">
                         <td />
-                        <td colSpan={7} className="!pt-0">
+                        <td colSpan={6} className="!pt-0">
                           <div className="flex flex-col gap-3">
                             <SapoVariants p={p} />
                             <CostingCard p={p} />
@@ -368,7 +367,7 @@ export default function ProductsPage() {
                   </Fragment>
                 );
               }) : (
-                <tr><td colSpan={8}><EmptyState>{s.products.length ? "Không tìm thấy sản phẩm phù hợp." : "Chưa có sản phẩm nào. Thêm ở khối bên trên."}</EmptyState></td></tr>
+                <tr><td colSpan={7}><EmptyState>{s.products.length ? "Không tìm thấy sản phẩm phù hợp." : "Chưa có sản phẩm nào. Thêm ở khối bên trên."}</EmptyState></td></tr>
               )}
             </tbody>
           </table>

@@ -83,7 +83,6 @@ export function SapoVariants({ p }: { p: Product }) {
         <span className="text-xs text-muted-foreground">
           {vs.length} phiên bản
           {p.category && <> · Loại <b className="text-fg">{p.category}</b></>}
-          {p.brand && <> · Nhãn hiệu <b className="text-fg">{p.brand}</b></>}
         </span>
       </div>
       <div className="overflow-x-auto">
