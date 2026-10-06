@@ -307,3 +307,15 @@ describe('phiếu trả sửa theo size', () => {
     expect((r as { status: string }).status).toBe('returned')
   })
 })
+
+describe('giá BQ sau mỗi lần nhập (trên phần còn trong kho)', () => {
+  it('nhập 100 × 1.000, xuất 80, nhập 20 × 2.000 → (20×1.000 + 20×2.000) ÷ 40 = 1.500', async () => {
+    const { applyImport, applyIssue } = await import('./inventory')
+    const m = mat()
+    applyImport(m, 100, 1000)
+    applyIssue(m, 80)
+    applyImport(m, 20, 2000)
+    expect(m.stock).toBe(40)
+    expect(m.avgPrice).toBe(1500)
+  })
+})

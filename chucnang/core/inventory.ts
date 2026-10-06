@@ -75,11 +75,16 @@ export function unusableMaterials(product: Product, materials: Material[]) {
 
 export const DEFECTS = ['Bỏ mũi', 'Đường may lệch', 'Dơ, ố', 'Sai thông số', 'Thiếu nút', 'Lỗi khác']
 
-// Giá BQ = tổng tiền các lần nhập ÷ tổng số lượng các lần nhập
+// Giá BQ sau mỗi lần nhập, tính trên phần còn trong kho:
+// giá mới = (tồn hiện tại × giá BQ cũ + số nhập × giá nhập) ÷ (tồn + số nhập). Tồn ≤ 0 thì lấy giá nhập.
+export function movingAvg(stock: number, avg: number, qty: number, price: number) {
+  const base = Math.max(0, stock)
+  return base + qty > 0 ? (base * avg + qty * price) / (base + qty) : price
+}
 export function applyImport(material: Material, qty: number, price: number) {
+  material.avgPrice = movingAvg(material.stock, material.avgPrice, qty, price)
   material.totalImportQty += qty
   material.totalImportCost += qty * price
-  material.avgPrice = material.totalImportCost / material.totalImportQty
   material.stock = round2(material.stock + qty)
 }
 
@@ -90,8 +95,7 @@ export function applyIssue(material: Material, qty: number) {
 
 // Giá BQ nếu nhập thêm (để hiện trước khi bấm)
 export function previewAvg(material: Material, qty: number, price: number) {
-  const tq = material.totalImportQty + qty
-  return tq ? (material.totalImportCost + qty * price) / tq : 0
+  return movingAvg(material.stock, material.avgPrice, qty, price)
 }
 
 export function needFor(product: Product, qty: number, materials: Material[]) {

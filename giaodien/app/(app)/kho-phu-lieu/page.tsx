@@ -123,7 +123,7 @@ export default function MaterialsPage() {
       <PageHeader
         eyebrow={<>Phân hệ kho <span className="text-subtle">/</span> <span className="text-subtle">Nguyên phụ liệu</span></>}
         title="Kho nguyên phụ liệu"
-        desc="Giá BQ = tổng tiền các lần nhập ÷ tổng số lượng các lần nhập. Xuất kho tự động theo định mức khi tạo lệnh."
+        desc="Giá BQ sau mỗi lần nhập = (tồn × giá BQ cũ + số nhập × giá nhập) ÷ (tồn + số nhập). Xuất kho không đổi giá BQ."
         aside={
           <div className="grid w-full grid-cols-3 gap-2 min-[1500px]:w-auto">
             <StatCard className="min-[1500px]:min-w-[150px]" label="Giá trị tồn" value={<span className="text-[20px]">{vnd(total)}</span>} tone="brand" />
