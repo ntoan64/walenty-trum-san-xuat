@@ -7,7 +7,9 @@ import { can } from "../core/permissions";
 import { COLLECTIONS, createBaseState, type CollectionKey, type DataState } from "../core/state";
 import type { AuditEntry, Notification, User } from "../core/types";
 
-type Meta = { _id: "meta"; version: number; seq: DataState["seq"] };
+// writing: đang ghi dở (đã giữ version mới nhưng chưa ghi xong dữ liệu) → người đọc phải đợi
+type Meta = { _id: "meta"; version: number; seq: DataState["seq"]; writing?: boolean; writingAt?: Date };
+const WRITE_STALE_MS = 15_000; // ghi dở quá lâu (máy chủ chết giữa chừng) thì bỏ qua cờ
 const KEYS = Object.keys(COLLECTIONS) as CollectionKey[];
 
 // Giữ dung lượng gọn cho gói Mongo 512MB:
@@ -52,21 +54,30 @@ export async function currentVersion() {
   return meta?.version ?? 0;
 }
 
+const busy = (m: Meta) => !!m.writing && !!m.writingAt && Date.now() - m.writingAt.getTime() < WRITE_STALE_MS;
+
+// Đọc trọn bộ dữ liệu nhất quán: không đọc khi có người đang ghi dở, đọc xong mà version đổi thì đọc lại
 async function readAll(): Promise<{ state: DataState; version: number } | null> {
   const db = await getDb();
-  const meta = await db.collection<Meta>("meta").findOne({ _id: "meta" });
-  if (!meta) return null;
-  if (cache && cache.version === meta.version) return cache;
-  const parts = await Promise.all(KEYS.map(k => k === "notifications"
-    ? db.collection(COLLECTIONS[k]).find().sort({ sentAt: -1 }).limit(RETENTION.notificationsLoaded).toArray()
-    : db.collection(COLLECTIONS[k]).find().toArray()));
-  const state = { seq: meta.seq } as DataState;
-  KEYS.forEach((k, i) => {
-    // _id trong Mongo chính là id của bản ghi
-    (state as unknown as Record<string, unknown[]>)[k] = parts[i].map(({ _id, ...rest }) => ({ ...rest, id: _id }));
-  });
-  cache = { state, version: meta.version };
-  return cache;
+  for (let i = 0; i < 200; i++) {
+    const meta = await db.collection<Meta>("meta").findOne({ _id: "meta" });
+    if (!meta) return null;
+    if (busy(meta)) { await new Promise(r => setTimeout(r, 40)); continue; }
+    if (cache && cache.version === meta.version) return cache;
+    const parts = await Promise.all(KEYS.map(k => k === "notifications"
+      ? db.collection(COLLECTIONS[k]).find().sort({ sentAt: -1 }).limit(RETENTION.notificationsLoaded).toArray()
+      : db.collection(COLLECTIONS[k]).find().toArray()));
+    const after = await db.collection<Meta>("meta").findOne({ _id: "meta" }, { projection: { version: 1, writing: 1, writingAt: 1 } });
+    if (!after || after.version !== meta.version || busy(after as Meta)) continue; // có người ghi chen giữa lúc đọc
+    const state = { seq: meta.seq } as DataState;
+    KEYS.forEach((k, j) => {
+      // _id trong Mongo chính là id của bản ghi
+      (state as unknown as Record<string, unknown[]>)[k] = parts[j].map(({ _id, ...rest }) => ({ ...rest, id: _id }));
+    });
+    if (!cache || cache.version <= meta.version) cache = { state, version: meta.version };
+    return { state, version: meta.version };
+  }
+  throw new Error("Dữ liệu đang được ghi, thử lại sau giây lát");
 }
 
 // Database trống → tạo 3 người dùng + 2 xưởng. Mật khẩu admin ban đầu lấy từ ADMIN_PASSWORD (nếu có)
@@ -137,11 +148,16 @@ export async function runAction(user: User, name: string, args: unknown[], onNot
     // Khóa lạc quan: chỉ ghi nếu chưa ai ghi chen vào
     const claimed = await db.collection<Meta>("meta").updateOne(
       { _id: "meta", version },
-      { $set: { version: version + 1, seq: draft.seq } },
+      { $set: { version: version + 1, seq: draft.seq, writing: true, writingAt: new Date() } },
     );
     if (claimed.matchedCount === 0) continue;
-    await writeDiff(state, draft);
-    cache = { state: draft, version: version + 1 };
+    try {
+      await writeDiff(state, draft);
+    } finally {
+      // ghi xong (hoặc lỗi) thì mở cho người khác đọc
+      await db.collection<Meta>("meta").updateOne({ _id: "meta", version: version + 1 }, { $set: { writing: false } });
+    }
+    if (!cache || cache.version <= version + 1) cache = { state: draft, version: version + 1 };
     const ref = res.id ?? (typeof args[0] === "string" && /^(LSX|R)-/.test(args[0]) ? args[0] : undefined);
     await audit({ userId: user.id, userName: user.name, action: name, label, detail: res.msg, ref });
     if (onNotify) {
