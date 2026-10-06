@@ -27,7 +27,7 @@ export const SCREEN_ROLES: Record<Screen, Role[]> = {
   finished: FULL,
   workshops: STAFF,
   reports: STAFF,
-  users: ['quanly'],
+  users: FULL,
   history: ROLES, // ai cũng xem lịch sử của mình
   customer: ROLES,
   stats: FULL, // có giá tiền, QC không xem
@@ -61,10 +61,10 @@ export const ACTION_ROLES: Record<Action, Role[]> = {
   'repair.status': STAFF,
   'repair.requc': STAFF,
   'report.send': FULL,
-  'user.manage': ['quanly'], // chỉ admin cấp tài khoản, mật khẩu
+  'user.manage': FULL, // quản lý kho (Phan Anh + Huỳnh) cấp tài khoản, mật khẩu
   'notify.send': FULL,
   'workshop.manage': FULL,
-  'order.admin': ['quanly'], // chỉ admin sửa / hủy lệnh
+  'order.admin': FULL, // quản lý kho sửa / hủy lệnh
   'customer.repair': ROLES, // sale tạo yêu cầu + cửa hàng xác nhận hoàn thành
   'customer.qc': STAFF, // QC nhận hàng, gửi xưởng, kiểm tra, trả sale
 }

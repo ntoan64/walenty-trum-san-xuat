@@ -79,9 +79,10 @@ describe("1. Khởi tạo + đăng nhập", () => {
     expect(c.users.find(x => x.username === "admin")?.hasPassword).toBe(true);
   });
 
-  it("chỉ admin cấp mật khẩu; phó kho bị chặn", async () => {
+  it("quản lý kho + phó kho cấp mật khẩu; QC bị chặn", async () => {
     const hash = await hashPassword("qc-pass-123");
-    await fails(kho, "setPassword", { userId: qc.id, passwordHash: hash });
+    await fails(qc, "setPassword", { userId: qc.id, passwordHash: hash });
+    await ok(kho, "setPassword", { userId: qc.id, passwordHash: hash });
     await ok(admin, "setPassword", { userId: qc.id, passwordHash: hash });
     const q = (await state()).users.find(x => x.id === qc.id)!;
     expect(await verifyPassword("qc-pass-123", q.passwordHash)).toBe(true);
