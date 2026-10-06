@@ -16,9 +16,9 @@ async function shrink(file: File): Promise<Blob> {
   return new Promise((ok, no) => canvas.toBlob(b => (b ? ok(b) : no(new Error("Không xử lý được ảnh"))), "image/jpeg", 0.82));
 }
 
-export async function uploadPhoto(file: File): Promise<string> {
+export async function uploadPhoto(file: File, folder: "qc" | "material" = "qc"): Promise<string> {
   if (file.size > 25 * 1024 * 1024) throw new Error("Ảnh quá lớn (tối đa 25MB)");
-  const [blob, sigRes] = await Promise.all([shrink(file), fetch("/api/upload/sign", { method: "POST" })]);
+  const [blob, sigRes] = await Promise.all([shrink(file), fetch(`/api/upload/sign?folder=${folder}`, { method: "POST" })]);
   const sig = await sigRes.json().catch(() => ({}));
   if (!sigRes.ok) throw new Error(sig.error ?? "Không lấy được quyền tải ảnh");
   const fd = new FormData();

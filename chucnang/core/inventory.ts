@@ -119,11 +119,12 @@ export function unitCost(product: Product, materials: Material[], color?: string
 // Ngưỡng báo đủ (nếu chưa đặt thì lấy 130% ngưỡng báo hết)
 export const okLevel = (m: Material) => m.okStock ?? Math.ceil(m.minStock * 1.3)
 
-export type StockLevel = 'low' | 'near' | 'ok'
+// Mức tồn: hết (≤ 0, đỏ) · sắp hết (trên 0 đến 10, cam) · đủ
+export const LOW_STOCK = 10
+export type StockLevel = 'out' | 'low' | 'ok'
 export function stockLevel(m: Material): StockLevel {
-  if (m.status === "discontinued") return "ok"
-  if (m.stock < m.minStock) return 'low'
-  if (m.stock < okLevel(m)) return 'near'
+  if (m.stock <= 0) return 'out'
+  if (m.stock <= LOW_STOCK) return 'low'
   return 'ok'
 }
 

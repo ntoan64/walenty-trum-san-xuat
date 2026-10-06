@@ -13,9 +13,9 @@ import { SearchBox } from "@/components/xf/search-box";
 import { useStore, A } from "@/lib/store";
 import { useAction, useConfirmAction } from "@/lib/use-action";
 import { fmtD, nf, vnd } from "@/lib/format";
-import { lowMaterials } from "@/lib/selectors";
 import { cn } from "@/lib/utils";
 import { Summary } from "@/components/xf/confirm-provider";
+import { PhotoPicker, PhotoStrip } from "@/components/xf/photos";
 import { ImportTable } from "@/components/xf/import-table";
 import { StatusSelect } from "@/components/xf/status-select";
 import { useDraft } from "@/lib/use-draft";
@@ -29,8 +29,10 @@ function EditMaterialDialog({ m, onClose }: { m: Material; onClose: () => void }
   const act = useAction();
   const [f, setF] = useState({ code: m.code, name: m.name, unit: m.unit, category: m.category });
   const [busy, setBusy] = useState(false);
+  const [img, setImg] = useState<string[]>(m.image ? [m.image] : []);
   const save = async () => {
     setBusy(true);
+    if ((img[0] ?? "") !== (m.image ?? "")) await act("material.manage", A.setMaterialImage, m.id, img[0] ?? null);
     const r = await act("material.manage", A.updateMaterial, m.id, f);
     setBusy(false);
     if (r.ok) onClose();
@@ -59,6 +61,10 @@ function EditMaterialDialog({ m, onClose }: { m: Material; onClose: () => void }
           <Field label="Đơn vị tính" htmlFor="em-unit">
             <input id="em-unit" className="field-input" maxLength={20} value={f.unit} onChange={e => setF({ ...f, unit: e.target.value })} />
           </Field>
+          <div>
+            <span className="mb-1 block text-xs font-medium text-muted-foreground">Ảnh</span>
+            <PhotoPicker label={`Ảnh ${m.code}`} folder="material" max={1} value={img} onChange={setImg} />
+          </div>
         </div>
         <DialogFooter>
           <Button variant="secondary" onClick={onClose}>Hủy</Button>
@@ -75,7 +81,9 @@ export default function MaterialsPage() {
   const [cat, setCat] = useDraft<"all" | MaterialCategory>("npl:cat", "all");
   const [filter, setFilter] = useDraft("npl:filter", "all");
   const total = sum(s.materials, m => m.stock * m.avgPrice);
-  const low = lowMaterials(s).filter(m => m.status === "active").length;
+  const live = s.materials.filter(m => m.status !== "discontinued");
+  const out = live.filter(m => stockLevel(m) === "out").length;
+  const low = live.filter(m => stockLevel(m) === "low").length;
   const [q, setQ] = useDraft("npl:q", "");
   const list = s.materials.filter(m => (cat === "all" || m.category === cat) && matches(q, m.code, m.name, MATERIAL_CATEGORIES[m.category], m.unit, m.supplier, m.supplierCode, m.note));
   const manage = can("material.manage");
@@ -117,7 +125,7 @@ export default function MaterialsPage() {
           <div className="grid w-full grid-cols-3 gap-2 min-[1500px]:w-auto">
             <StatCard className="min-[1500px]:min-w-[150px]" label="Giá trị tồn" value={<span className="text-[20px]">{vnd(total)}</span>} tone="brand" />
             <StatCard className="min-[1500px]:min-w-[110px]" label="Mã phụ liệu" value={s.materials.length} unit="mã" />
-            <StatCard className="min-[1500px]:min-w-[110px]" label="Sắp hết" value={low} unit="mã" tone={low ? "alert" : "default"} />
+            <StatCard className="min-[1500px]:min-w-[110px]" label="Hết / sắp hết" value={<><span className="text-bad">{out}</span> / <span className="text-warn">{low}</span></>} unit="mã" tone={out ? "alert" : "default"} />
           </div>
         }
       />
@@ -156,12 +164,13 @@ export default function MaterialsPage() {
       >
         <TableWrap>
           <table className="wl-table !min-w-[1000px]">
-            <thead><tr><th>Mã</th><th>Tên</th><th>Loại</th><th>ĐVT</th><th className="r">Tồn</th><th className="r">Giá BQ</th><th className="r">Giá trị tồn</th><th>Mức tồn</th><th>Tình trạng</th></tr></thead>
+            <thead><tr><th className="w-12">Ảnh</th><th>Mã</th><th>Tên</th><th>Loại</th><th>ĐVT</th><th className="r">Tồn</th><th className="r">Giá BQ</th><th className="r">Giá trị tồn</th><th>Mức tồn</th><th>Tình trạng</th></tr></thead>
             <tbody>
               {list.map(m => {
                 const lv = stockLevel(m);
                 return (
                   <tr key={m.id} className={m.status === "discontinued" ? "opacity-60" : ""}>
+                    <td className="!py-1.5">{m.image ? <PhotoStrip photos={[m.image]} size={36} /> : <span className="block size-9 rounded-md bg-surface-2" />}</td>
                     <td className="num font-bold whitespace-nowrap text-brand">
                       {m.code}
                       {manage && (
@@ -172,13 +181,13 @@ export default function MaterialsPage() {
                     <td className="font-medium">{m.name}{(m.supplier || m.supplierCode) && <div className="text-[11.5px] font-normal text-subtle" title={m.note}>{[m.supplier, m.supplierCode].filter(Boolean).join(" · ")}</div>}</td>
                     <td className="text-brown">{MATERIAL_CATEGORIES[m.category]}</td>
                     <td>{m.unit}</td>
-                    <td className={`r num font-semibold ${lv === "low" ? "text-bad" : ""}`}>{nf(m.stock, 1)}</td>
+                    <td className={`r num font-semibold ${lv === "out" ? "text-bad" : lv === "low" ? "text-warn" : ""}`}>{nf(m.stock, 1)}</td>
                     <td className="r num">{m.totalImportQty ? vnd(m.avgPrice) : "–"}</td>
                     <td className="r num">{vnd(m.stock * m.avgPrice)}</td>
                     <td>
                       {m.status === "discontinued" ? <span className="text-xs text-subtle">–</span>
-                        : lv === "low" ? <StatusPill tone="bad" dot>Sắp hết</StatusPill>
-                        : lv === "near" ? <StatusPill tone="warn" dot>Gần hết</StatusPill>
+                        : lv === "out" ? <StatusPill tone="bad" dot>Đã hết</StatusPill>
+                        : lv === "low" ? <StatusPill tone="warn" dot>Sắp hết</StatusPill>
                         : <StatusPill tone="ok" dot>Đủ</StatusPill>}
                     </td>
                     <td>

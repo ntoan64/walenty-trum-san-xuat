@@ -23,7 +23,6 @@ const { hashPassword, verifyPassword } = await import("../server/auth");
 const { loadState, runAction, toClient, listAudit } = await import("../server/store");
 const { rateLimit, isDuplicate } = await import("../server/guard");
 const { calcBalance, canClose, isBalanced } = await import("../core/orders");
-const { stockLevel } = await import("../core/inventory");
 
 const dateIn = (days: number) => new Date(Date.now() + days * 864e5).toISOString().slice(0, 10);
 let admin: User, kho: User, qc: User;
@@ -220,7 +219,6 @@ describe("5. Ngưỡng báo hết / báo đủ", () => {
     const vai = s.materials[0]; // đang 348 mét
     await ok(admin, "setThresholds", vai.id, { minStock: 400, okStock: 600 });
     let s2 = await state();
-    expect(stockLevel(s2.materials[0])).toBe("low");
     expect(s2.notifications[0].text).toMatch(/báo hết/);
     const before = s2.notifications.length;
     await ok(kho, "importMaterial", { materialId: vai.id, qty: 100, price: 40000, supplier: "" }); // 448: vẫn chưa đủ
@@ -229,7 +227,6 @@ describe("5. Ngưỡng báo hết / báo đủ", () => {
     await ok(kho, "importMaterial", { materialId: vai.id, qty: 200, price: 40000, supplier: "" }); // 648 ≥ 600
     s2 = await state();
     expect(s2.notifications[0].text).toMatch(/đã đủ hàng/);
-    expect(stockLevel(s2.materials[0])).toBe("ok");
   });
 });
 

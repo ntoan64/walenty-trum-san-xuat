@@ -141,6 +141,14 @@ export function updateMaterial(c: Ctx, id: string, a: { code: string; name: stri
   return ok(old === code ? `Đã sửa ${code}` : `Đã đổi mã ${old} → ${code}`);
 }
 
+export function setMaterialImage(c: Ctx, id: string, image: string | null): Result {
+  const m = byId(c.s.materials, id);
+  if (!m) return fail("Không tìm thấy phụ liệu");
+  if (image && (image.length > 400 || !PHOTO_RE.test(image))) return fail("Ảnh không hợp lệ");
+  m.image = image || undefined;
+  return ok(image ? `Đã lưu ảnh ${m.code}` : `Đã bỏ ảnh ${m.code}`);
+}
+
 export function setThresholds(c: Ctx, id: string, a: { minStock: number; okStock: number }): Result {
   const m = byId(c.s.materials, id);
   if (!m) return fail("Không tìm thấy phụ liệu");
@@ -474,7 +482,12 @@ export function importNvl(c: Ctx, f: NvlFile): Result {
   // mã có giá trong file nhưng chưa từng nhập → lấy giá file làm giá bình quân ban đầu
   for (const x of f.materials) { const m = byCode.get(String(x.code).trim()); if (m && !m.avgPrice && x.price > 0) m.avgPrice = x.price; }
   // tồn âm (file ghi xuất nhiều hơn nhập) giữ nguyên như file, chỉ báo lại để kiểm tra
+  // tồn kho không được âm: file ghi xuất nhiều hơn nhập thì đưa về 0, ghi lại để kiểm tra
   const negative = [...new Set(byCode.values())].filter(m => m.stock < 0);
+  for (const m of negative) {
+    c.s.materialTxns.push({ id: uid(c, "t"), material: m.id, type: "adjust", qty: -m.stock, reason: `${NVL_TAG}: tồn âm ${nf(m.stock, 1)} đưa về 0`, stockAfter: 0, avgAfter: m.avgPrice, by: c.me, at: c.now });
+    m.stock = 0;
+  }
   let boms = 0;
   for (const b of f.boms ?? []) {
     const p = byId(c.s.products, b.product);
@@ -487,7 +500,7 @@ export function importNvl(c: Ctx, f: NvlFile): Result {
     } else p.bom = lines;
     boms++;
   }
-  return ok(`NVL: ${created} phụ liệu mới, ${moves.length} lần nhập / xuất, ${boms} định mức${negative.length ? `, ${negative.length} mã tồn âm (giữ nguyên theo file)` : ""}`);
+  return ok(`NVL: ${created} phụ liệu mới, ${moves.length} lần nhập / xuất, ${boms} định mức${negative.length ? `, ${negative.length} mã tồn âm đưa về 0` : ""}`);
 }
 
 // Tìm phiên bản theo SKU / barcode (quét mã)
@@ -972,6 +985,7 @@ export const ACTIONS: Record<string, [Action | null, (c: Ctx, ...args: any[]) =>
   importNvl: ["user.manage", importNvl, "Đồng bộ file nguyên vật liệu"],
   updateMaterial: ["material.manage", updateMaterial, "Sửa phụ liệu"],
   setVariantPrice: ["product.manage", setVariantPrice, "Sửa giá phiên bản"],
+  setMaterialImage: ["material.manage", setMaterialImage, "Ảnh phụ liệu"],
   setProductBom: ["product.manage", setProductBom, "Sửa định mức sản phẩm"],
   createOrder: ["order.create", createOrder, "Tạo lệnh sản xuất"],
   confirmCut: ["order.cut", confirmCut, "Xác nhận đã cắt"],

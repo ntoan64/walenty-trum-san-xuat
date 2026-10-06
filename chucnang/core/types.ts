@@ -78,6 +78,7 @@ export interface Material {
   supplier?: string // nhà cung cấp
   supplierCode?: string // mã của nhà cung cấp (vd FP07997_40#)
   note?: string // đặc tính, dùng may sản phẩm nào
+  image?: string // ảnh phụ liệu (Cloudinary)
 }
 
 export interface MaterialTxn {

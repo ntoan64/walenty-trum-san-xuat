@@ -22,7 +22,7 @@ export function PhotoStrip({ photos, size = 40, className }: { photos?: string[]
 }
 
 // Chọn / chụp ảnh lỗi, tải lên ngay, trả về danh sách link
-export function PhotoPicker({ value, onChange, max = 4, label }: { value: string[]; onChange: (v: string[]) => void; max?: number; label: string }) {
+export function PhotoPicker({ value, onChange, max = 4, label, folder = "qc" }: { value: string[]; onChange: (v: string[]) => void; max?: number; label: string; folder?: "qc" | "material" }) {
   const ref = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(0);
   const pick = async (files: FileList | null) => {
@@ -32,7 +32,7 @@ export function PhotoPicker({ value, onChange, max = 4, label }: { value: string
     let cur = value;
     for (const f of list) {
       try {
-        const url = await uploadPhoto(f);
+        const url = await uploadPhoto(f, folder);
         cur = [...cur, url];
         onChange(cur);
       } catch (e) {

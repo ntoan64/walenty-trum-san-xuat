@@ -14,7 +14,7 @@ export function sign(params: Record<string, string | number>, secret: string) {
   return createHash("sha1").update(s + secret).digest("hex");
 }
 
-export const FOLDERS = { qc: "walenty/qc" } as const;
+export const FOLDERS = { qc: "walenty/qc", material: "walenty/material" } as const;
 
 export function signUpload(folder: keyof typeof FOLDERS) {
   const c = cloudConfig();
