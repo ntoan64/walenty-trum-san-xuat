@@ -73,7 +73,9 @@ function Sidebar() {
 
       <nav aria-label="Phân hệ" className="flex gap-1 overflow-x-auto pb-1 min-[820px]:flex-col min-[820px]:overflow-visible min-[820px]:pb-0">
         {TEAMS.map(t => {
-          const list = items.filter(n => n.team === t.id);
+          // sale chỉ có Lịch sử ngoài phần cửa hàng → gom vào nhóm Sale cho gọn
+          const teamOf = (n: (typeof items)[number]) => (role === "sale" && n.screen === "history" ? "sale" : n.team);
+          const list = items.filter(n => teamOf(n) === t.id);
           if (!list.length && !t.soon) return null;
           return (
           <div key={t.id} className="contents min-[820px]:flex min-[820px]:flex-col min-[820px]:gap-1 min-[820px]:[&:not(:first-child)]:mt-3">

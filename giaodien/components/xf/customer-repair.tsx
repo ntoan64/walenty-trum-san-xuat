@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { MessageSquarePlus, Phone } from "lucide-react";
+import { Fragment, useState } from "react";
+import { ChevronRight, MessageSquarePlus, Phone } from "lucide-react";
 import { byId, type CustomerRepair, type CustomerRepairStatus } from "@core";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -185,12 +185,40 @@ export function CustomerRepairList({ list, empty }: { list: CustomerRepair[]; em
   const now = new Date();
   const [sending, setSending] = useState<CustomerRepair | null>(null);
   const [noting, setNoting] = useState<CustomerRepair | null>(null);
+  // bảng gọn: bấm 1 dòng để xem đầy đủ thông tin, lịch sử và nút của bước hiện tại
+  const [open, setOpen] = useState<string | null>(null);
+  if (!list.length) return <div className="p-4 md:p-5"><EmptyState>{empty}</EmptyState></div>;
   return (
     <>
-      <div className="grid grid-cols-1 gap-3 p-4 md:p-5 xl:grid-cols-2">
-        {list.length
-          ? list.map(r => <RepairCard key={r.id} r={r} now={now} onSend={() => setSending(r)} onNote={() => setNoting(r)} />)
-          : <div className="xl:col-span-2"><EmptyState>{empty}</EmptyState></div>}
+      <div className="overflow-x-auto">
+        <table className="wl-table">
+          <thead><tr><th className="w-8" /><th>Mã</th><th>Mã ĐH Sapo</th><th>Khách</th><th>Sản phẩm</th><th>Bước hiện tại</th><th>Hẹn trả</th></tr></thead>
+          <tbody>
+            {list.map(r => {
+              const isOpen = open === r.id, st = stepOf(r.status), late = isLate(r, now);
+              return (
+                <Fragment key={r.id}>
+                  <tr className={cn("cursor-pointer", isOpen && "bg-brand-soft/30", r.status === "done" && "opacity-70")} onClick={() => setOpen(isOpen ? null : r.id)}>
+                    <td><ChevronRight className={cn("size-4 text-subtle transition-transform duration-200", isOpen && "rotate-90")} /></td>
+                    <td className="num font-bold text-brand">{r.code}</td>
+                    <td className="num font-semibold">{r.orderCode ?? "—"}</td>
+                    <td>{r.customerName}<div className="num text-[11.5px] text-subtle">{r.customerPhone}</div></td>
+                    <td className="max-w-[260px] truncate">{r.item}</td>
+                    <td><StatusPill tone={st.tone} dot>{st.label}</StatusPill></td>
+                    <td className={cn("num whitespace-nowrap", late && "font-semibold text-bad")}>{fmtD(r.promisedAt)}{late && <div className="text-[11px]">trễ {daysLate(r.promisedAt, now)} ngày</div>}</td>
+                  </tr>
+                  {isOpen && (
+                    <tr className="hover:!bg-transparent">
+                      <td colSpan={7} className="!pt-0">
+                        <div className="reveal"><RepairCard r={r} now={now} onSend={() => setSending(r)} onNote={() => setNoting(r)} /></div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
       {sending && <SendDialog r={sending} onClose={() => setSending(null)} />}
       {noting && <NoteDialog r={noting} onClose={() => setNoting(null)} />}

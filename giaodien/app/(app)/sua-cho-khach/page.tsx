@@ -63,7 +63,7 @@ function ReceiveFromCustomer() {
           <textarea id="cr-note" rows={2} maxLength={1000} className="field-input resize-y" placeholder="Tình trạng khi nhận, phụ kiện kèm theo…"
             value={f.note} onChange={e => setF({ ...f, note: e.target.value })} />
         </Field>
-        <div className="sm:col-span-2 lg:col-span-4"><Button type="submit">Nhận đồ</Button></div>
+        <div className="sm:col-span-2 lg:col-span-4"><Button type="submit">Gửi yêu cầu sửa</Button></div>
       </form>
     </Collapsible>
   );
@@ -71,7 +71,7 @@ function ReceiveFromCustomer() {
 
 /* ---------- Chọn xưởng để gửi ---------- */
 export default function CustomerRepairsPage() {
-  const { data: s, can } = useStore();
+  const { data: s, can, role } = useStore();
   const now = new Date();
   const all = (s.customerRepairs ?? []).slice().sort((a, b) => Number(isLate(b, now)) - Number(isLate(a, now)) || a.promisedAt.getTime() - b.promisedAt.getTime());
   const [tab, setTab] = useDraft<"open" | CustomerRepairStatus>("customer:tab", "open");
@@ -89,7 +89,7 @@ export default function CustomerRepairsPage() {
       <PageHeader
         eyebrow={<>Cửa hàng <span className="text-subtle">/</span> <span className="text-subtle">Sửa đồ cho khách</span></>}
         title="Đồ khách gửi sửa"
-        desc="Nhận đồ khách mang tới cửa hàng, gửi xưởng sửa và theo dõi tới khi trả khách."
+        desc="Sale gửi yêu cầu sửa → QC nhận, gửi xưởng, kiểm tra → cửa hàng kiểm tra lại, nhập SON → hoàn thành. Bấm một dòng để xem chi tiết."
         aside={
           <div className="grid w-full grid-cols-3 gap-2 min-[1500px]:w-auto">
             <StatCard className="min-[1500px]:min-w-[120px]" label="Đang xử lý" value={count("open")} unit="món" tone="brand" />
@@ -98,7 +98,8 @@ export default function CustomerRepairsPage() {
           </div>
         }
       />
-      {can("customer.repair") && <ReceiveFromCustomer />}
+      {/* QC chỉ xem danh sách; sale (và quản lý) tạo yêu cầu */}
+      {can("customer.repair") && role !== "qc" && <ReceiveFromCustomer />}
       <datalist id="cr-products">{s.products.map(p => <option key={p.id} value={`${p.name} ${p.sku}`} />)}</datalist>
 
       <Panel
