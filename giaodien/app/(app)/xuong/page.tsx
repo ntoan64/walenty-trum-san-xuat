@@ -20,13 +20,20 @@ import { heldByWorkshop } from "@/lib/selectors";
 import { nf } from "@/lib/format";
 
 // Trang Xưởng may: theo dõi xưởng nào đang giữ hàng lỗi của mình mang về sửa, lỗi gì, giữ bao lâu
-type WsForm = { name: string; area: string; contactName: string; phone: string };
-const EMPTY: WsForm = { name: "", area: "", contactName: "", phone: "" };
+type WsForm = { name: string; area: string; contactName: string; phone: string; kind: "xuong" | "ncc" };
+const EMPTY: WsForm = { name: "", area: "", contactName: "", phone: "", kind: "xuong" };
+const KIND = { xuong: "Xưởng may", ncc: "Nhà cung cấp (vải, phụ liệu)" } as const;
 
 function WorkshopFields({ f, setF, idp }: { f: WsForm; setF: (f: WsForm) => void; idp: string }) {
   return (
     <>
-      <Field label="Tên xưởng" htmlFor={`${idp}-name`}>
+      <Field label="Loại" htmlFor={`${idp}-kind`}>
+        <select id={`${idp}-kind`} className="field-input" value={f.kind} onChange={e => setF({ ...f, kind: e.target.value as WsForm["kind"] })}>
+          <option value="xuong">{KIND.xuong}</option>
+          <option value="ncc">{KIND.ncc}</option>
+        </select>
+      </Field>
+      <Field label={f.kind === "ncc" ? "Tên công ty / NCC" : "Tên xưởng"} htmlFor={`${idp}-name`}>
         <input id={`${idp}-name`} className="field-input" maxLength={120} placeholder="VD: Xưởng Cô Sáu" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} />
       </Field>
       <Field label="Khu vực" htmlFor={`${idp}-area`}>
@@ -49,16 +56,16 @@ function CreateWorkshop() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const r = await act(
-      { title: "Thêm xưởng?", confirmLabel: "Thêm xưởng", description: <Summary rows={[["Tên xưởng", f.name], ["Khu vực", f.area || "—"], ["Người liên hệ", f.contactName || "—"], ["Số điện thoại", f.phone]]} /> },
+      { title: "Thêm xưởng?", confirmLabel: "Thêm xưởng", description: <Summary rows={[["Loại", KIND[f.kind ?? "xuong"]], ["Tên", f.name], ["Khu vực", f.area || "—"], ["Người liên hệ", f.contactName || "—"], ["Số điện thoại", f.phone || "—"]]} /> },
       "workshop.manage", A.createWorkshop, f,
     );
     if (r?.ok) clear();
   };
   return (
-    <Collapsible title="Thêm xưởng" icon={Plus}>
+    <Collapsible title="Thêm xưởng may / nhà cung cấp" icon={Plus}>
       <form onSubmit={submit} className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] items-end gap-3 p-4 md:p-5">
         <WorkshopFields f={f} setF={setF} idp="nw" />
-        <div><Button type="submit">Thêm xưởng</Button></div>
+        <div><Button type="submit">Thêm</Button></div>
       </form>
     </Collapsible>
   );
@@ -67,7 +74,7 @@ function CreateWorkshop() {
 /* ---------- Sửa xưởng ---------- */
 function EditWorkshop({ w, onClose }: { w: Workshop; onClose: () => void }) {
   const act = useAskAction();
-  const [f, setF] = useState<WsForm>({ name: w.name, area: w.area, contactName: w.contactName, phone: w.phone });
+  const [f, setF] = useState<WsForm>({ name: w.name, area: w.area, contactName: w.contactName, phone: w.phone, kind: w.kind ?? "xuong" });
   const [busy, setBusy] = useState(false);
   const save = async () => {
     setBusy(true);
@@ -79,7 +86,7 @@ function EditWorkshop({ w, onClose }: { w: Workshop; onClose: () => void }) {
     <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="font-serif text-lg text-brand">Sửa thông tin xưởng</DialogTitle>
+          <DialogTitle className="font-serif text-lg text-brand">Sửa thông tin · {w.name}</DialogTitle>
         </DialogHeader>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><WorkshopFields f={f} setF={setF} idp="ew" /></div>
         <DialogFooter>
@@ -180,7 +187,14 @@ export default function WorkshopsPage() {
         <Panel><EmptyState>Chưa có xưởng nào. {manage ? "Thêm xưởng ở khối bên trên để giao lệnh sản xuất." : "Quản lý kho sẽ thêm xưởng."}</EmptyState></Panel>
       )}
 
-      {groups.map(({ w, list, qty, late: nLate, defects, done }) => (
+      <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-2">
+      {(["xuong", "ncc"] as const).map(kind => {
+        const col = groups.filter(g => (g.w.kind ?? "xuong") === kind);
+        return (
+        <div key={kind} className="flex min-w-0 flex-col gap-5">
+          <h2 className="flex items-center gap-2 font-serif text-lg font-semibold text-brand">{KIND[kind]} <span className="num font-sans text-xs font-normal text-subtle">{col.length}</span></h2>
+          {!col.length && <Panel><EmptyState>{kind === "xuong" ? "Chưa có xưởng may." : "Chưa có nhà cung cấp. Thêm ở khối bên trên, chọn loại Nhà cung cấp."}</EmptyState></Panel>}
+      {col.map(({ w, list, qty, late: nLate, defects, done }) => (
         <Panel
           key={w.id}
           icon={Factory}
@@ -301,6 +315,10 @@ export default function WorkshopsPage() {
           )}
         </Panel>
       ))}
+        </div>
+        );
+      })}
+      </div>
       {editing && <EditWorkshop w={editing} onClose={() => setEditing(null)} />}
       {ratesFor && <RatesDialog w={ratesFor} onClose={() => setRatesFor(null)} />}
     </>

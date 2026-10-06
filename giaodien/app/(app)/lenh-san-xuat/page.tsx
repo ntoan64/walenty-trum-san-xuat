@@ -53,7 +53,7 @@ function CreateOrder() {
   const [f, setF] = useDraft("order:f2", () => ({ ws: "", due: isoDateVN(new Date(Date.now() + 5 * DAY)) }));
   const [lines, setLines] = useDraft<Line[]>("order:lines", []);
   const [seq, setSeq] = useDraft("order:lseq", 1);
-  const workshops = s.workshops.filter(w => w.active);
+  const workshops = s.workshops.filter(w => w.active && w.kind !== "ncc");
   const ws = workshops.find(w => w.id === f.ws) ?? workshops[0];
   if (!can("order.create")) return null;
   if (!workshops.length) return <Panel><EmptyState>Chưa có xưởng nào đang hợp tác. Thêm xưởng ở trang Xưởng may trước khi tạo lệnh.</EmptyState></Panel>;

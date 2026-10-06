@@ -29,6 +29,7 @@ export interface Workshop {
   note?: string
   aliases?: string[] // tên gọi khác (trong file tính giá, Sapo…) để khớp tự động
   rates?: WorkshopRate[] // bảng giá gia công
+  kind?: "xuong" | "ncc" // xưởng may (mặc định) hoặc nhà cung cấp vải / phụ liệu
 }
 
 export interface WorkshopRate {

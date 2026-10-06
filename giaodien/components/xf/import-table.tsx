@@ -156,7 +156,7 @@ export function ImportTable() {
             <label htmlFor="ip-sup" className="mb-1 block text-xs font-medium text-muted-foreground">Nhà cung cấp</label>
             <SearchPicker id="ip-sup" label="Nhà cung cấp" placeholder="Gõ tìm trong Xưởng may & NCC…"
               value={s.workshops.find(w => w.name === supplier)?.id}
-              items={s.workshops.filter(w => w.active).map(w => ({ id: w.id, label: w.name, sub: w.area, search: [w.contactName, ...(w.aliases ?? [])] }))}
+              items={s.workshops.filter(w => w.active).sort((a, b) => (a.kind === "ncc" ? 0 : 1) - (b.kind === "ncc" ? 0 : 1)).map(w => ({ id: w.id, label: w.name, sub: w.kind === "ncc" ? "Nhà cung cấp" : "Xưởng may", search: [w.area, w.contactName, ...(w.aliases ?? [])] }))}
               onPick={id => setSupplier(s.workshops.find(w => w.id === id)?.name ?? "")} />
           </div>
           <Button type="submit">Nhập kho{rows.length > 1 ? ` ${rows.length} dòng` : ""}</Button>

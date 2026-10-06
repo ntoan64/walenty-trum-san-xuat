@@ -180,12 +180,13 @@ export function setThresholds(c: Ctx, id: string, a: { minStock: number; okStock
 }
 
 /* ---------- xưởng may ---------- */
-type WorkshopInput = { name: string; area: string; contactName: string; phone: string };
+type WorkshopInput = { name: string; area: string; contactName: string; phone: string; kind?: "xuong" | "ncc" };
 function workshopError(c: Ctx, a: WorkshopInput, selfId?: string) {
   const name = a.name.trim(), phone = a.phone.trim();
   if (!name) return "Nhập tên xưởng";
   if (name.length > LIMITS.name || tooLong(a.area, 60) || tooLong(a.contactName, 60)) return "Thông tin quá dài";
-  if (!/^[0-9 +.]{9,15}$/.test(phone)) return "Số điện thoại không hợp lệ (9–15 số)";
+  if (phone && !/^[0-9 +.]{9,15}$/.test(phone)) return "Số điện thoại không hợp lệ (9–15 số)";
+  if (a.kind && a.kind !== "xuong" && a.kind !== "ncc") return "Loại không hợp lệ";
   if (c.s.workshops.some(w => w.id !== selfId && w.name.trim().toLowerCase() === name.toLowerCase())) return `Xưởng ${name} đã có`;
   return null;
 }
@@ -193,7 +194,7 @@ function workshopError(c: Ctx, a: WorkshopInput, selfId?: string) {
 export function createWorkshop(c: Ctx, a: WorkshopInput): Result {
   const err = workshopError(c, a);
   if (err) return fail(err);
-  c.s.workshops.push({ id: uid(c, "w"), name: a.name.trim(), area: a.area.trim(), contactName: a.contactName.trim(), phone: a.phone.trim(), active: true });
+  c.s.workshops.push({ id: uid(c, "w"), name: a.name.trim(), area: a.area.trim(), contactName: a.contactName.trim(), phone: a.phone.trim(), active: true, kind: a.kind ?? "xuong" });
   return ok(`Đã thêm ${a.name.trim()}`);
 }
 
@@ -202,7 +203,7 @@ export function updateWorkshop(c: Ctx, id: string, a: WorkshopInput): Result {
   if (!w) return fail("Không tìm thấy xưởng");
   const err = workshopError(c, a, id);
   if (err) return fail(err);
-  Object.assign(w, { name: a.name.trim(), area: a.area.trim(), contactName: a.contactName.trim(), phone: a.phone.trim() });
+  Object.assign(w, { name: a.name.trim(), area: a.area.trim(), contactName: a.contactName.trim(), phone: a.phone.trim(), ...(a.kind ? { kind: a.kind } : {}) });
   return ok(`Đã cập nhật ${w.name}`);
 }
 
@@ -680,6 +681,7 @@ export function createOrder(c: Ctx, a: { productId: string; workshopId: string; 
   const ws = byId(c.s.workshops, a.workshopId);
   if (!ws) return fail("Chọn xưởng");
   if (!ws.active) return fail(`${ws.name} đã ngừng hợp tác`);
+  if (ws.kind === "ncc") return fail(`${ws.name} là nhà cung cấp, không giao lệnh may được`);
   // Ngày dự kiến hoàn thành (yyyy-mm-dd), hết hạn lúc 23:59 giờ Việt Nam ngày đó
   if (!/^\d{4}-\d{2}-\d{2}$/.test(a.dueDate)) return fail("Chọn ngày dự kiến hoàn thành");
   const dueAt = new Date(`${a.dueDate}T23:59:59+07:00`);
