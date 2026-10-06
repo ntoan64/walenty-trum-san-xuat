@@ -193,6 +193,41 @@ function QCForm({ o, b }: { o: ProductionOrder; b: Batch }) {
   );
 }
 
+// Giá vốn lệnh = phụ liệu (bình quân lúc tạo lệnh) + công may + phụ liệu khác; sửa công may khi thuê xưởng ngoài.
+// Lệnh mới nhất của mẫu / màu → giá nhập sản phẩm cập nhật theo.
+function OrderCost({ o, editable }: { o: ProductionOrder; editable: boolean }) {
+  const act = useConfirmAction();
+  const labor = o.labor ?? 0;
+  const [v, setV] = useState(String(labor));
+  const [note, setNote] = useState(o.costNote ?? "");
+  const nl = Math.max(0, +v || 0);
+  const next = Math.max(0, o.unitCost - labor + nl);
+  const changed = nl !== labor || note.trim() !== (o.costNote ?? "");
+  return (
+    <div className="flex flex-col gap-3 text-[13px]">
+      <p>
+        <b className="num text-brand">{vnd(o.unitCost)}/cái</b> · tổng <b className="num">{vnd(o.unitCost * o.qty)}</b>
+        {o.labor != null && <span className="text-muted-foreground"> · gồm công may {vnd(labor)}</span>}
+        {o.costNote && <span className="text-muted-foreground"> · {o.costNote}</span>}
+      </p>
+      {editable && (
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] items-end gap-2">
+          <NumberField id={`oc-${o.id}`} label="Công may (đ/cái)" min={0} step="any" value={v} onChange={setV} />
+          <Field label="Ghi chú" htmlFor={`ocn-${o.id}`}>
+            <input id={`ocn-${o.id}`} className="field-input" maxLength={120} placeholder="VD: thuê xưởng ngoài" value={note} onChange={e => setNote(e.target.value)} />
+          </Field>
+          <Button variant="secondary" disabled={!changed} onClick={() => act(
+            { title: "Chỉnh giá vốn lệnh?", confirmLabel: "Lưu giá vốn",
+              description: <Summary rows={[["Lệnh", o.code], ["Công may", `${vnd(labor)} → ${vnd(nl)}`], ["Giá vốn / cái", `${vnd(o.unitCost)} → ${vnd(next)}`]]} /> },
+            "order.create", A.setOrderCost, o.id, { labor: nl, note },
+          )}>Lưu giá vốn</Button>
+        </div>
+      )}
+      <p className="text-[12px] text-muted-foreground">Phụ liệu tính theo giá bình quân lúc tạo lệnh. Nếu đây là lệnh mới nhất của mẫu{o.color ? ` (${o.color})` : ""} thì giá nhập sản phẩm cũng cập nhật theo.</p>
+    </div>
+  );
+}
+
 function LossForm({ o, max }: { o: ProductionOrder; max: number }) {
   const act = useConfirmAction();
   const { data: s } = useStore();
@@ -561,11 +596,8 @@ export default function OrderDetailPage() {
       </Panel>
 
       {can("price.view") && (
-        <Panel title="Giá vốn chốt khi tạo lệnh" icon={Coins}>
-          <p className="text-[13px]">
-            <b className="num text-brand">{vnd(o.unitCost)}/cái</b> · tổng <b className="num">{vnd(o.unitCost * o.qty)}</b>.{" "}
-            <span className="text-muted-foreground">Giá phụ liệu thay đổi sau này không làm đổi số của lệnh này.</span>
-          </p>
+        <Panel title="Giá vốn của lệnh" icon={Coins}>
+          <OrderCost o={o} editable={can("order.create") && !o.cancelled} />
         </Panel>
       )}
     </>

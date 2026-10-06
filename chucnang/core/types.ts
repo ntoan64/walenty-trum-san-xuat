@@ -189,7 +189,9 @@ export interface ProductionOrder {
   qty: number
   dueAt: Date
   step: Step
-  unitCost: number
+  unitCost: number // giá vốn 1 cái chốt cho lệnh
+  labor?: number // công may trong giá vốn (sửa được khi thuê xưởng ngoài)
+  costNote?: string // ghi chú khi chỉnh giá (vd xưởng ngoài may mắc hơn)
   color?: string // màu (sản phẩm nhiều màu)
   sizes?: SizeQty[]
   loss: number

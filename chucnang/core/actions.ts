@@ -2,7 +2,7 @@
 // Mỗi hàm nhận bản nháp state (đã clone) và sửa trực tiếp; trả lỗi thì bản nháp bị bỏ.
 import {
   applyImport, applyIssue, byId, calcBalance, canClose, DAY, REPAIR_DUE_DAYS,
-  MATERIAL_CATEGORIES, MATERIAL_STATUS, nextMaterialCode, colorsOf, forColor, okLevel, isLive, PRODUCT_STATUS, needFor, shortages, unitCost, unusableMaterials, sizeProgress, validateDefectLines, validateQC, validateRequc,
+  MATERIAL_CATEGORIES, MATERIAL_STATUS, nextMaterialCode, colorsOf, forColor, costBreakdown, okLevel, isLive, PRODUCT_STATUS, needFor, shortages, unitCost, unusableMaterials, sizeProgress, validateDefectLines, validateQC, validateRequc,
   type BomLine, type Costing, type WorkshopRate, type DefectLine, type EventType, type SizeQty, type ItemStatus, type Material, type MaterialCategory, type ProductionOrder, type ProductVariant, type Role, type Action,
 } from "./index";
 import type { DataState } from "./state";
@@ -401,6 +401,30 @@ export function setProductBom(c: Ctx, id: string, a: { laborCost: number; bom: B
   return ok(`${p.name}${color ? ` (${color})` : ""}: đã lưu định mức (${bom.length} phụ liệu)`);
 }
 
+// Giá nhập (giá vốn) của sản phẩm = giá vốn lệnh sản xuất mới nhất của mẫu / màu đó
+function syncProductCost(c: Ctx, o: ProductionOrder) {
+  const latest = c.s.orders
+    .filter(x => !x.cancelled && x.product === o.product && (x.color ?? "") === (o.color ?? ""))
+    .reduce<ProductionOrder | undefined>((a, x) => (!a || x.createdAt >= a.createdAt ? x : a), undefined);
+  if (latest?.id !== o.id) return;
+  const p = byId(c.s.products, o.product);
+  for (const v of p?.variants ?? []) if (!o.color || v.color === o.color) v.cost = Math.round(o.unitCost);
+}
+
+// Chỉnh công may / giá vốn của lệnh (vd thuê xưởng ngoài may mắc hơn); lệnh mới nhất thì cập nhật giá nhập sản phẩm
+export function setOrderCost(c: Ctx, orderId: string, a: { labor: number; note?: string }): Result {
+  const o = getOrder(c, orderId);
+  if (!o) return fail("Không tìm thấy lệnh");
+  if (!(a.labor >= 0) || a.labor > LIMITS.labor) return fail("Công may không hợp lệ");
+  if (tooLong(a.note, LIMITS.name)) return fail("Ghi chú quá dài");
+  const old = o.unitCost;
+  o.unitCost = Math.max(0, o.unitCost - (o.labor ?? 0) + a.labor);
+  o.labor = a.labor;
+  o.costNote = a.note?.trim() || undefined;
+  syncProductCost(c, o);
+  return ok(`${o.code}: giá vốn ${vnd(old)} → ${vnd(o.unitCost)}/cái`);
+}
+
 // ----- Đồng bộ file TÍNH GIÁ SP: xưởng (địa chỉ, bảng giá gia công) + bảng tính giá từng sản phẩm -----
 export interface CostingFile {
   workshops: { name: string; area: string; contactName: string; phone: string; address?: string; note?: string; aliases: string[]; rates: WorkshopRate[] }[]
@@ -613,7 +637,9 @@ export function createOrder(c: Ctx, a: { productId: string; workshopId: string; 
     unitCost: unitCost(p0, c.s.materials, color), loss: 0, lossApproved: false, batches: [],
     createdBy: c.me, createdAt: c.now, dueAt,
   };
+  o.labor = costBreakdown(p0, c.s.materials, color).labor;
   c.s.orders.push(o);
+  syncProductCost(c, o);
   const need = needFor(p, qty, c.s.materials);
   for (const n of need) {
     applyIssue(n.material, n.qty);
@@ -986,6 +1012,7 @@ export const ACTIONS: Record<string, [Action | null, (c: Ctx, ...args: any[]) =>
   updateMaterial: ["material.manage", updateMaterial, "Sửa phụ liệu"],
   setVariantPrice: ["product.manage", setVariantPrice, "Sửa giá phiên bản"],
   setMaterialImage: ["material.manage", setMaterialImage, "Ảnh phụ liệu"],
+  setOrderCost: ["order.create", setOrderCost, "Chỉnh giá vốn lệnh"],
   setProductBom: ["product.manage", setProductBom, "Sửa định mức sản phẩm"],
   createOrder: ["order.create", createOrder, "Tạo lệnh sản xuất"],
   confirmCut: ["order.cut", confirmCut, "Xác nhận đã cắt"],

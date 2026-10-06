@@ -12,6 +12,7 @@ import { Summary } from "@/components/xf/confirm-provider";
 import { isoDateVN, nf, vnd } from "@/lib/format";
 import { CalcHint, EmptyState, Field, PageHeader, Panel, StatCard, StatusPill } from "@/components/xf/basics";
 import { OrderCard } from "@/components/xf/order-card";
+import { SearchPicker } from "@/components/xf/search-picker";
 import { SapoSheetPanel } from "@/components/xf/sapo-sheet";
 import { useDraft } from "@/lib/use-draft";
 import { balanceOf } from "@/lib/selectors";
@@ -105,15 +106,15 @@ function CreateOrder() {
         <form onSubmit={submit} className="flex flex-col gap-4 p-4 md:p-5">
           <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] items-end gap-3">
             <Field label="Sản phẩm" htmlFor="o-prod">
-              <select id="o-prod" className="field-input" value={p.id} onChange={e => {
-                const np = products.find(x => x.id === e.target.value);
-                const nc = np ? colorsOf(np)[0] ?? "" : "";
-                setF({ ...f, product: e.target.value, color: nc });
-                // sản phẩm có khai báo size + SKU → lưới số lượng lấy đúng các size đó
-                setSizes(sizesOf(np, nc).map(z => ({ size: z, qty: "" })));
-              }}>
-                {products.map(x => <option key={x.id} value={x.id}>{x.name}{hasBom(x) ? "" : " (chưa định mức)"}</option>)}
-              </select>
+              <SearchPicker id="o-prod" label="Sản phẩm" placeholder="Gõ tên, SKU để tìm sản phẩm…" value={p.id}
+                items={products.map(x => ({ id: x.id, label: x.name, sub: hasBom(x) ? x.category : "chưa định mức", search: [x.sku, x.category, ...(x.variants ?? []).map(v => v.sku)] }))}
+                onPick={id => {
+                  const np = products.find(x => x.id === id);
+                  const nc = np ? colorsOf(np)[0] ?? "" : "";
+                  setF({ ...f, product: id, color: nc });
+                  // sản phẩm có khai báo size + SKU → lưới số lượng lấy đúng các size đó
+                  setSizes(sizesOf(np, nc).map(z => ({ size: z, qty: "" })));
+                }} />
             </Field>
             {colors.length > 1 && (
               <Field label="Màu" htmlFor="o-color">
@@ -126,9 +127,9 @@ function CreateOrder() {
               </Field>
             )}
             <Field label="Xưởng cắt + may" htmlFor="o-ws">
-              <select id="o-ws" className="field-input" value={ws.id} onChange={e => setF({ ...f, ws: e.target.value })}>
-                {workshops.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-              </select>
+              <SearchPicker id="o-ws" label="Xưởng cắt + may" placeholder="Gõ tên xưởng…" value={ws.id}
+                items={workshops.map(w => ({ id: w.id, label: w.name, sub: w.area, search: [w.contactName, ...(w.aliases ?? [])] }))}
+                onPick={id => setF({ ...f, ws: id })} />
             </Field>
             <Field label="Ngày dự kiến xong" htmlFor="o-due">
               <input id="o-due" type="date" min={today} className="field-input num" value={f.due} onChange={e => setF({ ...f, due: e.target.value })} />
@@ -173,12 +174,29 @@ function CreateOrder() {
             </CalcHint>
           ) : short.length ? (
             <CalcHint bad>
-              <b>Không đủ phụ liệu:</b> {short.map(n => `${n.material.code} cần ${nf(n.qty, 1)}, còn ${nf(n.material.stock, 1)} ${n.material.unit}`).join(" · ")}
+              <b>Không đủ phụ liệu ({short.length} mã):</b>
+              <ul className="mt-1 flex flex-col gap-1">
+                {short.map(n => (
+                  <li key={n.material.id} className="flex flex-wrap items-baseline gap-x-2 rounded-md bg-surface/70 px-2 py-1">
+                    <span className="font-bold">•</span>
+                    <b className="num">{n.material.code}</b>
+                    <span className="min-w-0 flex-1">{n.material.name}</span>
+                    <span className="num whitespace-nowrap">cần <b>{nf(n.qty, 1)}</b> · còn <b>{nf(n.material.stock, 1)}</b> · thiếu <b className="text-bad">{nf(n.qty - n.material.stock, 1)}</b> {n.material.unit}</span>
+                  </li>
+                ))}
+              </ul>
             </CalcHint>
           ) : qty > 0 ? (
             <CalcHint>
-              Sẽ xuất kho: {need.map(n => `${n.material.code} ${nf(n.qty, 1)} ${n.material.unit}`).join(" · ")}
-              <br />
+              <b>Sẽ xuất kho:</b>
+              <ul className="mt-1 mb-1.5 flex flex-col gap-0.5">
+                {need.map(n => (
+                  <li key={n.material.id} className="flex gap-2">
+                    <span>•</span><b className="num">{n.material.code}</b><span className="min-w-0 flex-1">{n.material.name}</span>
+                    <span className="num whitespace-nowrap">{nf(n.qty, 1)} {n.material.unit}</span>
+                  </li>
+                ))}
+              </ul>
               Giá vốn chốt cho lệnh: <b>{vnd(cost)}/cái</b> · tổng <b>{vnd(cost * qty)}</b>
             </CalcHint>
           ) : null}
