@@ -726,10 +726,10 @@ export function confirmCut(c: Ctx, orderId: string): Result {
   const o = getOrder(c, orderId);
   if (!o || o.step !== "cut") return fail("Lệnh không ở bước chờ cắt");
   // chưa xuất đủ phụ liệu theo định mức thì chưa cho may
-  if (o.pendingIssue) return fail(o.issuedAt ? "Chưa xuất đủ phụ liệu, xuất nốt phần còn lại rồi mới bắt đầu may" : "Chưa xuất phụ liệu cho lệnh này, bấm Xuất phụ liệu trước");
+  if (o.pendingIssue) return fail(o.issuedAt ? "Chưa xuất đủ phụ liệu, xuất nốt phần còn lại rồi xưởng mới nhận và may" : "Chưa xuất phụ liệu cho lệnh này, bấm Xuất phụ liệu trước");
   o.step = "sew";
   event(c, "issue", o, o.qty);
-  notify(c, ["quanly", "kho"], `✂️ ${o.code}: ${wsName(c.s, o.workshop)} đã cắt xong ${o.qty} cái, bắt đầu may.`);
+  notify(c, ["quanly", "kho"], `✂️ ${o.code}: ${wsName(c.s, o.workshop)} đã nhận nguyên phụ liệu, bắt đầu may ${o.qty} cái.`);
   return ok("Đã chuyển sang bước may");
 }
 
@@ -1097,7 +1097,7 @@ export const ACTIONS: Record<string, [Action | null, (c: Ctx, ...args: any[]) =>
   setCostRatio: ["product.manage", setCostRatio, "Sửa tỉ lệ cost mục tiêu"],
   setProductBom: ["product.manage", setProductBom, "Sửa định mức sản phẩm"],
   createOrder: ["order.create", createOrder, "Tạo lệnh sản xuất"],
-  confirmCut: ["order.cut", confirmCut, "Xác nhận đã cắt"],
+  confirmCut: ["order.cut", confirmCut, "Xưởng đã nhận nguyên phụ liệu"],
   receive: ["order.receive", receive, "Nhận hàng từ xưởng"],
   saveQC: ["qc.save", saveQC, "Lưu kết quả QC"],
   reportLoss: ["loss.report", reportLoss, "Ghi hao hụt"],

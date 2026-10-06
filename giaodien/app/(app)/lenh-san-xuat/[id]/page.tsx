@@ -43,7 +43,8 @@ function ReceiveBySize({ o, max, ws, prog }: { o: ProductionOrder; max: number; 
   const act = useConfirmAction();
   const { data: s } = useStore();
   const variants = byId(s.products, o.product)?.variants;
-  const [v, setV] = useDraft<Record<string, string>>(`rcv-size:${o.id}`, () => Object.fromEntries(prog.map(p => [p.size, String(p.missing)])));
+  // mặc định 0, nhập số nhận đợt này → "còn thiếu" tính ngay theo từng size
+  const [v, setV] = useDraft<Record<string, string>>(`rcv-size2:${o.id}`, {});
   const sizes = prog.map(p => ({ size: p.size, qty: Math.max(0, Math.floor(+(v[p.size] ?? 0) || 0)) }));
   const total = sizes.reduce((t, x) => t + x.qty, 0);
   const submit = async () => {
@@ -56,27 +57,29 @@ function ReceiveBySize({ o, max, ws, prog }: { o: ProductionOrder; max: number; 
         ]} /> },
       "order.receive", A.receive, o.id, { sizes: sizes.filter(x => x.qty) },
     );
-    // nhận xong: ô mỗi size về số còn thiếu mới
-    if (r?.ok) setV(Object.fromEntries(prog.map(p => [p.size, String(Math.max(0, p.missing - (sizes.find(x => x.size === p.size)?.qty ?? 0)))])));
+    if (r?.ok) setV({});
   };
   return (
     <ActionBox title="Nhận hàng từ xưởng (theo size)" desc={`Xưởng còn ${max} cái chưa trả. Nhập số nhận đợt này của từng size, mỗi đợt QC riêng.`}>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-2">
-        {prog.map(p => (
+        {prog.map(p => {
+          const got = sizes.find(x => x.size === p.size)?.qty ?? 0, left = p.missing - got;
+          return (
           <label key={p.size} className={cn("flex flex-col gap-1 rounded-lg p-2", p.missing ? "bg-surface" : "bg-ok-soft/60")}>
             <span className="flex items-baseline justify-between gap-1 text-xs">
               <b className="text-brand">{p.size}</b>
-              <span className={p.missing ? "text-bad" : "text-ok"}>{p.missing ? `thiếu ${p.missing}` : "đủ"}</span>
+              <span className={left > 0 ? "text-bad" : left < 0 ? "text-bad font-bold" : "text-ok"}>{!p.missing ? "đủ" : left > 0 ? `còn thiếu ${left}` : left < 0 ? `dư ${-left}` : "đủ"}</span>
             </span>
             {variants?.find(x => x.size === p.size) && <span className="num -mt-1 text-[10.5px] text-subtle">{variants.find(x => x.size === p.size)!.sku}</span>}
             <input type="number" min={0} max={p.missing} step={1} inputMode="numeric" disabled={!p.missing} aria-label={`Số nhận size ${p.size}`}
-              className="field-input num !min-h-9 !py-1.5" value={p.missing ? v[p.size] ?? "" : "0"}
+              placeholder="0" className="field-input num !min-h-9 !py-1.5" value={p.missing ? v[p.size] ?? "" : "0"}
               onChange={e => setV({ ...v, [p.size]: e.target.value })} />
           </label>
-        ))}
+          );
+        })}
       </div>
       <div className="mt-2 flex items-center justify-between gap-2">
-        <span className="text-[13px]">Đợt này nhận <b className="num text-brand">{total}</b> cái</span>
+        <span className="text-[13px]">Đợt này nhận <b className="num text-brand">{total}</b> cái · sau đợt này còn thiếu <b className="num text-bad">{Math.max(0, max - total)}</b></span>
         <Button onClick={submit} disabled={!total}>Nhận hàng</Button>
       </div>
     </ActionBox>
@@ -85,7 +88,7 @@ function ReceiveBySize({ o, max, ws, prog }: { o: ProductionOrder; max: number; 
 
 function ReceiveTotal({ o, max, ws }: { o: ProductionOrder; max: number; ws: string }) {
   const act = useConfirmAction();
-  const [v, setV] = useDraft(`rcv:${o.id}`, String(max));
+  const [v, setV] = useDraft(`rcv2:${o.id}`, "");
   const [err, setErr] = useState<string | null>(null);
   const submit = async () => {
     const r = await act(
@@ -95,12 +98,12 @@ function ReceiveTotal({ o, max, ws }: { o: ProductionOrder; max: number; ws: str
     );
     if (!r) return;
     setErr(r.ok ? null : r.error);
-    if (r.ok) setV(String(Math.max(0, max - +v)));
+    if (r.ok) setV("");
   };
   return (
     <ActionBox title="Nhận hàng từ xưởng" desc={`Xưởng còn ${max} cái chưa trả. Mỗi đợt nhận sẽ chờ QC riêng.`}>
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
-        <NumberField id={`rcv-${o.id}`} label="Số lượng nhận đợt này" min={1} max={max} step={1} value={v} onChange={setV} error={err} />
+        <NumberField id={`rcv-${o.id}`} label={`Số lượng nhận đợt này (còn thiếu ${Math.max(0, max - (+v || 0))})`} min={0} max={max} step={1} value={v} onChange={setV} error={err} />
         <Button onClick={submit} className={err ? "mb-5" : ""}>Nhận hàng</Button>
       </div>
     </ActionBox>
@@ -478,14 +481,14 @@ export default function OrderDetailPage() {
           </ul>
         ) : <p className="text-[13px] text-muted-foreground">Không có phụ liệu xuất kho cho lệnh này.</p>}
       </ActionBox>,
-      <ActionBox key="cut" title="Xưởng đã cắt xong" desc={`Chuyển sang bước may. Ghi nhận ${o.qty} cái đã gửi may cho ${wsName(s, o.workshop)}.`}>
+      <ActionBox key="cut" title="Xưởng đã nhận nguyên phụ liệu" desc={`Chuyển sang bước may. ${wsName(s, o.workshop)} đã nhận đủ nguyên phụ liệu để may ${o.qty} cái.`}>
         {o.pendingIssue ? <p className="text-[13px] font-semibold text-bad">Chưa xuất đủ phụ liệu, xuất nốt phần còn lại mới được bắt đầu may.</p>
           : can("order.cut")
           ? <Button onClick={() => actC(
-              { title: "Xác nhận xưởng đã cắt xong?", confirmLabel: "Bắt đầu may",
+              { title: "Xác nhận xưởng đã nhận nguyên phụ liệu?", confirmLabel: "Bắt đầu may",
                 description: <Summary rows={[["Lệnh", o.code], ["Xưởng", wsName(s, o.workshop)], ["Gửi may", `${o.qty} cái`]]} /> },
               "order.cut", A.confirmCut, o.id,
-            )}>Xác nhận đã cắt, bắt đầu may</Button>
+            )}>Xưởng đã nhận NPL, bắt đầu may</Button>
           : <StatusPill>Kho xác nhận bước này</StatusPill>}
       </ActionBox>,
     );
