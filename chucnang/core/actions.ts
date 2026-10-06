@@ -725,8 +725,8 @@ export function issueMaterials(c: Ctx, orderIds: string[], materialIds?: string[
 export function confirmCut(c: Ctx, orderId: string): Result {
   const o = getOrder(c, orderId);
   if (!o || o.step !== "cut") return fail("Lệnh không ở bước chờ cắt");
-  // xuất được 1 phần (vd vải chính) là cắt được; phần còn lại gửi sau
-  if (o.pendingIssue && !o.issuedAt) return fail("Chưa xuất phụ liệu cho lệnh này, bấm Xuất phụ liệu trước");
+  // chưa xuất đủ phụ liệu theo định mức thì chưa cho may
+  if (o.pendingIssue) return fail(o.issuedAt ? "Chưa xuất đủ phụ liệu, xuất nốt phần còn lại rồi mới bắt đầu may" : "Chưa xuất phụ liệu cho lệnh này, bấm Xuất phụ liệu trước");
   o.step = "sew";
   event(c, "issue", o, o.qty);
   notify(c, ["quanly", "kho"], `✂️ ${o.code}: ${wsName(c.s, o.workshop)} đã cắt xong ${o.qty} cái, bắt đầu may.`);

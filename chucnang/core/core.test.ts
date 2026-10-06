@@ -283,11 +283,12 @@ describe('xuất phụ liệu từng phần', () => {
     expect(A.issueMaterials(c, [id], [vai.id]).ok).toBe(true) // gửi vải trước
     expect(vai.stock).toBe(80)
     expect(s.orders[0].pendingIssue).toBe(true)
-    expect(A.confirmCut(c, id).ok).toBe(true) // có vải là cắt được
+    expect(A.confirmCut(c, id).ok).toBe(false) // chưa đủ cúc thì chưa cho may
     A.importMaterial(c, { materialId: cuc.id, qty: 50, price: 500, supplier: '' })
     expect(s.notifications[0].text).toMatch(/đang chờ xuất[\s\S]*Cúc[\s\S]*cần 40/)
     expect(A.issueMaterials(c, [id]).ok).toBe(true) // gửi cúc sau
     expect(cuc.stock).toBe(10)
     expect(s.orders[0].pendingIssue).toBe(false)
+    expect(A.confirmCut(c, id).ok).toBe(true)
   })
 })

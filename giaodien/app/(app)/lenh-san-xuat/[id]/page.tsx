@@ -485,7 +485,8 @@ export default function OrderDetailPage() {
         ) : <p className="text-[13px] text-muted-foreground">Không có phụ liệu xuất kho cho lệnh này.</p>}
       </ActionBox>,
       <ActionBox key="cut" title="Xưởng đã cắt xong" desc={`Chuyển sang bước may. Ghi nhận ${o.qty} cái đã gửi may cho ${wsName(s, o.workshop)}.`}>
-        {can("order.cut")
+        {o.pendingIssue ? <p className="text-[13px] font-semibold text-bad">Chưa xuất đủ phụ liệu, xuất nốt phần còn lại mới được bắt đầu may.</p>
+          : can("order.cut")
           ? <Button onClick={() => actC(
               { title: "Xác nhận xưởng đã cắt xong?", confirmLabel: "Bắt đầu may",
                 description: <Summary rows={[["Lệnh", o.code], ["Xưởng", wsName(s, o.workshop)], ["Gửi may", `${o.qty} cái`]]} /> },
