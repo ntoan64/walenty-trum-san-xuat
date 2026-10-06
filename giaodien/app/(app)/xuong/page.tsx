@@ -16,6 +16,8 @@ import { Collapsible } from "@/components/xf/collapsible";
 import { daysLate, fmtD, vnd } from "@/lib/format";
 import { EmptyState, Field, PageHeader, Panel, StatCard, StatusPill, TableWrap } from "@/components/xf/basics";
 import { PhotoStrip } from "@/components/xf/photos";
+import { heldByWorkshop } from "@/lib/selectors";
+import { nf } from "@/lib/format";
 
 // Trang Xưởng may: theo dõi xưởng nào đang giữ hàng lỗi của mình mang về sửa, lỗi gì, giữ bao lâu
 type WsForm = { name: string; area: string; contactName: string; phone: string };
@@ -91,6 +93,8 @@ function EditWorkshop({ w, onClose }: { w: Workshop; onClose: () => void }) {
 
 export default function WorkshopsPage() {
   const { data: s, can } = useStore();
+  // phụ liệu đang nằm ở từng xưởng (đã xuất cho lệnh chưa xong)
+  const heldMat = heldByWorkshop(s);
   const confirmAct = useConfirmAction();
   const [editing, setEditing] = useState<Workshop | null>(null);
   const manage = can("workshop.manage");
@@ -174,6 +178,14 @@ export default function WorkshopsPage() {
           }
           flush
         >
+          {heldMat.get(w.id) && (
+            <div className="flex flex-wrap items-center gap-1.5 border-b border-line bg-brand-soft/30 px-4 py-2.5 text-[12.5px] md:px-5">
+              <span className="font-semibold text-brand">Đang giữ phụ liệu:</span>
+              {heldMat.get(w.id)!.map(x => (
+                <span key={x.material.id} className="rounded-md bg-surface px-2 py-0.5"><b className="num">{x.material.code}</b> {x.material.name} · <b className="num">{nf(x.qty, 1)}</b> {x.material.unit}</span>
+              ))}
+            </div>
+          )}
           {(w.address || w.note || !!w.rates?.length) && (
             <div className="flex flex-col gap-1.5 border-b border-line px-4 py-2.5 text-[12.5px] md:px-5">
               {(w.address || w.note) && (

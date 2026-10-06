@@ -1,4 +1,4 @@
-import { calcBalance, isLive, isRepairLate, sum, type ProductionOrder } from "@core";
+import { calcBalance, isLive, isRepairLate, sum, type Material, type ProductionOrder } from "@core";
 import type { DataState } from "@core/state";
 import { repairsOf } from "./actions";
 
@@ -41,4 +41,24 @@ export function fabricFor(s: DataState, o: ProductionOrder) {
   const fab = issuedFor(s, o).filter(x => x.material!.category === "vai");
   const meters = fab.reduce((t, x) => t + x.qty, 0);
   return { meters, perUnit: o.qty ? meters / o.qty : 0, unit: fab[0]?.material!.unit ?? "mét", names: fab.map(x => x.material!.name) };
+}
+
+// Phụ liệu xưởng đang giữ: đã xuất cho các lệnh chưa xong (trừ phần hoàn kho), cộng theo xưởng
+export function heldByWorkshop(s: DataState) {
+  const out = new Map<string, Map<string, number>>();
+  const live = new Map(s.orders.filter(o => !o.cancelled && o.step !== "done").map(o => [o.code, o.workshop]));
+  for (const t of s.materialTxns) {
+    const ws = t.order ? live.get(t.order) : undefined;
+    if (!ws || (t.type !== "out" && t.type !== "adjust")) continue;
+    const m = out.get(ws) ?? new Map<string, number>();
+    m.set(t.material, (m.get(t.material) ?? 0) + (t.type === "out" ? t.qty : -t.qty));
+    out.set(ws, m);
+  }
+  const res = new Map<string, { material: Material; qty: number }[]>();
+  for (const [ws, m] of out) {
+    const list = [...m].map(([id, qty]) => ({ material: s.materials.find(x => x.id === id)!, qty: Math.round(qty * 100) / 100 }))
+      .filter(x => x.material && x.qty > 0).sort((a, b) => b.qty - a.qty);
+    if (list.length) res.set(ws, list);
+  }
+  return res;
 }

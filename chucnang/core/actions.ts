@@ -825,10 +825,14 @@ export function reportLoss(c: Ctx, orderId: string, qty: number): Result {
   const o = getOrder(c, orderId);
   if (!o || o.step === "done" || o.step === "cut") return fail("Lệnh không ở bước ghi hao hụt");
   const b = calcBalance(o, repairsOf(c.s, o));
-  if (!isInt(qty) || qty < 1 || qty > b.notReturned) return fail(`Nhập từ 1 đến ${b.notReturned}`);
-  o.loss += qty;
+  // qty = tổng hao hụt của lệnh (đặt lại được, 0 = không hao hụt)
+  const max = b.notReturned + o.loss;
+  if (!isInt(qty) || qty < 0 || qty > max) return fail(`Nhập từ 0 đến ${max}`);
+  const diff = qty - o.loss;
+  o.loss = qty;
   o.lossApproved = false;
-  event(c, "loss", o, qty);
+  if (diff > 0) event(c, "loss", o, diff);
+  if (qty === 0) { notify(c, ["quanly", "kho"], `✅ ${o.code}: ${wsName(c.s, o.workshop)} không hao hụt.`); return ok("Đã ghi: không hao hụt"); }
   // Quy ra vải: mét vải đã giao cho lệnh ÷ số cái = mét / cái
   const fabric = c.s.materialTxns.filter(t => t.type === "out" && t.order === o.code && byId(c.s.materials, t.material)?.category === "vai").reduce((t, x) => t + x.qty, 0);
   const meters = o.qty ? (fabric / o.qty) * o.loss : 0;

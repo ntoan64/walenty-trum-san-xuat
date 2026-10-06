@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { History, RefreshCw } from "lucide-react";
+import { BellRing, History, RefreshCw } from "lucide-react";
 import type { AuditEntry } from "@core";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/lib/store";
@@ -20,6 +20,11 @@ export default function HistoryPage() {
   const [f, setF] = useDraft("history:f", () => ({ userId: "", from: isoDateVN(new Date(Date.now() - 7 * 864e5)), to: isoDateVN(new Date()), q: "" }));
   const [rows, setRows] = useState<AuditEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
+  // thông báo hệ thống tự tạo (lệnh, kho, QC…): xem ở đây, không gửi Telegram. QC chỉ thấy phần của QC.
+  const [autoLimit, setAutoLimit] = useState(50);
+  const fromT = f.from ? new Date(`${f.from}T00:00:00+07:00`).getTime() : 0, toT = f.to ? new Date(`${f.to}T23:59:59+07:00`).getTime() : Infinity;
+  const autos = s.notifications.filter(n => !n.from && (all || n.roles.includes("qc")) && n.sentAt.getTime() >= fromT && n.sentAt.getTime() <= toT
+    && (!f.q || n.text.toLowerCase().includes(f.q.toLowerCase())));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -101,6 +106,24 @@ export default function HistoryPage() {
             </tbody>
           </table>
         </TableWrap>
+      </Panel>
+
+      <Panel title="Thông báo tự động" icon={BellRing} flush tag={<StatusPill tone="muted">{autos.length}</StatusPill>}>
+        {autos.length ? (
+          <ul className="divide-y divide-line">
+            {autos.slice(0, autoLimit).map(n => (
+              <li key={n.id} className="flex gap-3 px-4 py-2.5 text-[13px] md:px-5">
+                <span className="num w-[118px] shrink-0 text-xs text-muted-foreground">{fmtDT(n.sentAt)}</span>
+                <span className="min-w-0 flex-1 whitespace-pre-line">{n.text}</span>
+              </li>
+            ))}
+          </ul>
+        ) : <EmptyState>Không có thông báo tự động trong khoảng ngày này.</EmptyState>}
+        {autos.length > autoLimit && (
+          <div className="flex justify-center border-t border-line p-3">
+            <Button variant="secondary" size="sm" onClick={() => setAutoLimit(autoLimit + 50)}>Xem thêm</Button>
+          </div>
+        )}
       </Panel>
     </>
   );

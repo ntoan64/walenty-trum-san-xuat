@@ -21,7 +21,7 @@ import { BalanceBar, BalanceEquation, BalanceLegend, StepProgress } from "@/comp
 import { RepairTable } from "@/components/xf/repair-table";
 import { ConfirmButton } from "@/components/xf/confirm-dialog";
 import { useDraft } from "@/lib/use-draft";
-import { PhotoPicker, PhotoStrip } from "@/components/xf/photos";
+import { PhotoStrip } from "@/components/xf/photos";
 import { cn } from "@/lib/utils";
 
 function ActionBox({ title, desc, children, tone }: { title: string; desc?: React.ReactNode; children?: React.ReactNode; tone?: "warn" }) {
@@ -119,7 +119,6 @@ function QCForm({ o, b }: { o: ProductionOrder; b: Batch }) {
   const [lines, setLines] = useDraft<DLine[]>(`qc:${b.id}:lines`, []);
   const [seq, setSeq] = useDraft(`qc:${b.id}:seq`, 1);
   const toLines = (): DefectLine[] => lines.map(l => ({ kind: l.kind, size: l.size, defect: l.defect, qty: Math.floor(+l.qty || 0), photos: l.photos ?? [] }));
-  const noPhoto = lines.filter(l => !l.photos?.length).length;
   const fails = toLines().reduce((t, l) => t + l.qty, 0);
   const pass = b.received - fails;
   const set = (key: number, patch: Partial<DLine>) => setLines(ls => ls.map(l => (l.key === key ? { ...l, ...patch } : l)));
@@ -169,10 +168,6 @@ function QCForm({ o, b }: { o: ProductionOrder; b: Batch }) {
               className="col-span-2 justify-self-end rounded-md p-1.5 text-subtle hover:bg-bad-soft hover:text-bad sm:order-5 sm:col-span-1">
               <Trash2 className="size-4" />
             </button>
-            <div className="col-span-2 flex items-center gap-2 sm:order-6 sm:col-span-5">
-              <PhotoPicker label={`Thêm ảnh lỗi dòng ${i + 1}`} value={l.photos ?? []} onChange={v => set(l.key, { photos: v })} />
-              {!l.photos?.length && <span className="text-[11.5px] text-bad">Cần ít nhất 1 ảnh lỗi</span>}
-            </div>
           </div>
         ))}
         <datalist id="defects">{suggest.map(d => <option key={d} value={d} />)}</datalist>
@@ -184,11 +179,9 @@ function QCForm({ o, b }: { o: ProductionOrder; b: Batch }) {
           </span>
         </div>
         <div className="flex items-center justify-end gap-2">
-          {noPhoto > 0 && <span className="text-[12px] text-bad">Còn {noPhoto} dòng chưa có ảnh</span>}
-          <Button onClick={submit} disabled={pass < 0 || noPhoto > 0}>Lưu kết quả QC</Button>
+          <Button onClick={submit} disabled={pass < 0}>Lưu kết quả QC</Button>
         </div>
       </div>
-      <p className="mt-1.5 text-[11.5px] text-subtle">Mỗi dòng lỗi chụp ít nhất 1 ảnh (tối đa 4). Ảnh được thu nhỏ trước khi tải lên.</p>
     </ActionBox>
   );
 }
@@ -282,11 +275,11 @@ function IssueBox({ o }: { o: ProductionOrder }) {
 function LossForm({ o, max }: { o: ProductionOrder; max: number }) {
   const act = useConfirmAction();
   const { data: s } = useStore();
-  const [v, setV] = useDraft(`loss:${o.id}`, "1");
+  const [v, setV] = useState(String(o.loss));
   const [err, setErr] = useState<string | null>(null);
   const fab = fabricFor(s, o);
   const n = Math.max(0, Math.floor(+v || 0));
-  const total = o.loss + n;
+  const total = n; // tổng hao hụt của lệnh (đặt lại được, 0 = không hao hụt)
   return (
     <ActionBox
       title="Xưởng báo hao hụt (thiếu vải)"
@@ -296,27 +289,28 @@ function LossForm({ o, max }: { o: ProductionOrder; max: number }) {
         {" "}Mức cho phép {LOSS_ALLOWED * 100}% ({Math.floor(o.qty * LOSS_ALLOWED)} cái). Cần Quản lý kho duyệt.
       </>}
     >
+      {n === 0 && <p className="mb-2 rounded-md bg-surface px-2.5 py-1.5 text-[12.5px] text-ok">0 = lệnh này không hao hụt.</p>}
       {n > 0 && (
         <p className={cn("mb-2 rounded-md px-2.5 py-1.5 text-[12.5px]", total / o.qty > LOSS_ALLOWED ? "bg-bad-soft text-bad" : "bg-surface text-fg")}>
-          Thiếu <b className="num">{n}</b> cái{fab.perUnit > 0 && <> ≈ <b className="num">{nf(n * fab.perUnit, 1)} {fab.unit}</b> vải</>}
+          Hao hụt <b className="num">{n}</b> cái{fab.perUnit > 0 && <> ≈ <b className="num">{nf(n * fab.perUnit, 1)} {fab.unit}</b> vải</>}
           {" "}· tổng hao hụt lệnh <b className="num">{pct(total / o.qty)}</b>{total / o.qty > LOSS_ALLOWED && " (vượt mức cho phép)"}
         </p>
       )}
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
-        <NumberField id={`loss-${o.id}`} label="Số cái hao hụt" min={1} max={max} step={1} value={v} onChange={setV} error={err} />
+        <NumberField id={`loss-${o.id}`} label="Tổng số cái hao hụt (0 = không hao hụt)" min={0} max={max} step={1} value={v} onChange={setV} error={err} />
         <Button
           variant="secondary"
           className={err ? "mb-5" : ""}
           onClick={async () => {
             const r = await act(
               { title: "Ghi hao hụt?", confirmLabel: "Ghi hao hụt",
-                description: <Summary rows={[["Lệnh", o.code], ["Hao hụt", `${n} cái${fab.perUnit ? ` ≈ ${nf(n * fab.perUnit, 1)} ${fab.unit} vải` : ""}`], ["Tổng hao hụt lệnh", pct(total / o.qty)], ["Mức cho phép", `${LOSS_ALLOWED * 100}%`]]} /> },
+                description: <Summary rows={[["Lệnh", o.code], ["Hao hụt", n ? `${n} cái${fab.perUnit ? ` ≈ ${nf(n * fab.perUnit, 1)} ${fab.unit} vải` : ""}` : "Không hao hụt"], ["Tổng hao hụt lệnh", pct(total / o.qty)], ["Mức cho phép", `${LOSS_ALLOWED * 100}%`]]} /> },
               "loss.report", A.reportLoss, o.id, +v,
             );
             if (r) setErr(r.ok ? null : r.error);
           }}
         >
-          Ghi hao hụt
+          {n === 0 ? "Ghi không hao hụt" : "Ghi hao hụt"}
         </Button>
       </div>
     </ActionBox>
@@ -500,7 +494,7 @@ export default function OrderDetailPage() {
     if (b.notReturned > 0 && can("order.receive")) blocks.push(<ReceiveForm key={`rcv-${b.notReturned}`} o={o} max={b.notReturned} ws={wsName(s, o.workshop)} />);
     if (can("qc.save")) pending.forEach(bt => blocks.push(<QCForm key={bt.id} o={o} b={bt} />));
     else if (pending.length) blocks.push(<ActionBox key="pq" title={`${b.pendingQC} cái đang chờ QC`} desc="Team QC sẽ kiểm và nhập kết quả." />);
-    if (b.notReturned > 0 && can("loss.report")) blocks.push(<LossForm key="loss" o={o} max={b.notReturned} />);
+    if (b.notReturned > 0 && can("loss.report")) blocks.push(<LossForm key={`loss-${o.loss}`} o={o} max={b.notReturned + o.loss} />);
     if (o.loss && !o.lossApproved) {
       blocks.push(
         <ActionBox key="approve" tone="warn" title={`Duyệt hao hụt ${o.loss} cái${fabricFor(s, o).perUnit ? ` ≈ ${nf(o.loss * fabricFor(s, o).perUnit, 1)} ${fabricFor(s, o).unit} vải` : ""} (${pct(lossPct)})`}
