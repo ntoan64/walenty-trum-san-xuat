@@ -243,10 +243,11 @@ describe("6. Đồ khách gửi sửa", () => {
     await ok(qc, "sendCustomerRepair", id, (await state()).workshops[0].id);
     await ok(qc, "customerRepairBack", id);
     await ok(qc, "customerRepairDone", id);
+    await ok(qc, "storeConfirmCustomerRepair", id, { checked: true, sonEntered: true });
     const cr = (await state()).customerRepairs[0];
     expect(cr.status).toBe("done");
     expect(cr.size).toBe("M");
-    expect(cr.history.map(h => h.text).join(" | ")).toMatch(/Lên lai 2cm.*lên lai 3cm.*QC đã nhận.*Gửi Xưởng A.*trả sale/);
+    expect(cr.history.map(h => h.text).join(" | ")).toMatch(/Lên lai 2cm.*lên lai 3cm.*QC đã nhận.*Gửi Xưởng A.*trả sale.*nhập SON/);
   });
 });
 

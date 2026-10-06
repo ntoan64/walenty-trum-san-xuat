@@ -20,7 +20,8 @@ export const STEPS: { key: CustomerRepairStatus; label: string; tone: PillTone }
   { key: "received", label: "QC đã nhận, chờ gửi xưởng", tone: "warn" },
   { key: "sent", label: "Xưởng đang sửa", tone: "info" },
   { key: "returned", label: "QC đã kiểm, chờ trả sale", tone: "brand" },
-  { key: "done", label: "Đã trả sale · hoàn thành", tone: "ok" },
+  { key: "handed", label: "Cửa hàng đang kiểm tra · chờ nhập SON", tone: "info" },
+  { key: "done", label: "Hoàn thành", tone: "ok" },
 ];
 export const stepOf = (k: CustomerRepairStatus) => STEPS.find(s => s.key === k)!;
 export const isLate = (r: CustomerRepair, now: Date) => r.status !== "done" && r.promisedAt < now;
@@ -149,16 +150,34 @@ function RepairCard({ r, now, onSend, onNote }: { r: CustomerRepair; now: Date; 
           )}
           {r.status === "returned" && (
             <Button size="sm" onClick={() => act(
-              { title: `Trả ${r.code} cho sale?`, confirmLabel: "Trả sale · hoàn thành", description: <Summary rows={[["Khách", `${r.customerName} · ${r.customerPhone}`], ["Sản phẩm", r.item]]} /> },
+              { title: `Trả ${r.code} cho sale?`, confirmLabel: "Trả sale", description: <Summary rows={[["Khách", `${r.customerName} · ${r.customerPhone}`], ["Sản phẩm", r.item]]} /> },
               "customer.repair", A.customerRepairDone, r.id,
-            )}>Trả sale · Hoàn thành</Button>
+            )}>Trả sale</Button>
           )}
+          {r.status === "handed" && <StoreConfirm r={r} />}
         </div>
       )}
     </article>
   );
 }
 
+
+// Cửa hàng nhận lại: tick đã kiểm tra + đã nhập SON rồi mới hoàn thành
+function StoreConfirm({ r }: { r: CustomerRepair }) {
+  const act = useConfirmAction();
+  const [checked, setChecked] = useState(false);
+  const [son, setSon] = useState(false);
+  return (
+    <div className="flex w-full flex-wrap items-center justify-end gap-x-4 gap-y-1.5 rounded-lg bg-surface-low px-3 py-2 text-[12.5px]">
+      <label className="flex items-center gap-1.5"><input type="checkbox" className="size-4 accent-[var(--brand)]" checked={checked} onChange={e => setChecked(e.target.checked)} /> Cửa hàng đã kiểm tra đồ</label>
+      <label className="flex items-center gap-1.5"><input type="checkbox" className="size-4 accent-[var(--brand)]" checked={son} onChange={e => setSon(e.target.checked)} /> Đã nhập SON <b className="num">{r.orderCode}</b> trên Sapo</label>
+      <Button size="sm" disabled={!checked || !son} onClick={() => act(
+        { title: `Hoàn thành ${r.code}?`, confirmLabel: "Hoàn thành", description: <Summary rows={[["Mã ĐH Sapo", r.orderCode ?? "—"], ["Khách", `${r.customerName} · ${r.customerPhone}`], ["Sản phẩm", r.item]]} /> },
+        "customer.repair", A.storeConfirmCustomerRepair, r.id, { checked, sonEntered: son },
+      )}>Hoàn thành</Button>
+    </div>
+  );
+}
 
 // Danh sách phiếu + hộp gửi xưởng / ghi chú
 export function CustomerRepairList({ list, empty }: { list: CustomerRepair[]; empty: string }) {

@@ -118,8 +118,11 @@ describe('đồ khách gửi sửa', () => {
     expect(s.customerRepairs![0].orderCode).toBe('SON15488')
     expect(A.sendCustomerRepair(c, 'KS-001', s.workshops[0].id).ok).toBe(true)
     expect(A.customerRepairBack(c, 'KS-001').ok).toBe(true)
-    expect(A.customerRepairDone(c, 'KS-001').ok).toBe(true)
-    expect(s.customerRepairs[0].history).toHaveLength(5)
+    expect(A.customerRepairDone(c, 'KS-001').ok).toBe(true) // QC trả sale
+    expect(A.storeConfirmCustomerRepair(c, 'KS-001', { checked: true, sonEntered: false }).ok).toBe(false) // chưa nhập SON
+    expect(A.storeConfirmCustomerRepair(c, 'KS-001', { checked: true, sonEntered: true }).ok).toBe(true)
+    expect(s.customerRepairs![0].status).toBe('done')
+    expect(s.customerRepairs[0].history).toHaveLength(6)
   })
 })
 

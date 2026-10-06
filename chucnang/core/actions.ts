@@ -286,9 +286,23 @@ export function customerRepairDone(c: Ctx, id: string): Result {
   const r = getCR(c, id);
   if (!r) return fail("Không tìm thấy phiếu");
   if (r.status !== "returned") return fail("Xưởng chưa trả đồ về");
+  r.status = "handed";
+  r.history.push({ at: tick(c), by: c.me, text: "QC đã trả sale, chờ cửa hàng kiểm tra" });
+  notify(c, ["quanly", "kho"], `📦 ${r.code}${r.orderCode ? ` (ĐH ${r.orderCode})` : ""}: QC đã trả đồ sửa cho cửa hàng, chờ kiểm tra + nhập SON.`);
+  return ok(`${r.code}: đã trả sale, chờ cửa hàng kiểm tra`);
+}
+
+// Cửa hàng kiểm tra lại đồ và xác nhận đã nhập SON trên Sapo → hoàn thành
+export function storeConfirmCustomerRepair(c: Ctx, id: string, a: { checked: boolean; sonEntered: boolean; note?: string }): Result {
+  const r = (c.s.customerRepairs ?? []).find(x => x.id === id);
+  if (!r) return fail("Không tìm thấy phiếu");
+  if (r.status !== "handed") return fail("QC chưa trả đồ cho cửa hàng");
+  if (!a.checked) return fail("Cửa hàng phải kiểm tra lại đồ trước khi hoàn thành");
+  if (!a.sonEntered) return fail(`Xác nhận đã nhập SON${r.orderCode ? ` ${r.orderCode}` : ""} trên Sapo`);
+  if (tooLong(a.note, LIMITS.text)) return fail("Ghi chú quá dài");
   r.status = "done"; r.doneAt = c.now;
-  r.history.push({ at: tick(c), by: c.me, text: "Đã trả sale, hoàn thành" });
-  return ok(`${r.code}: đã trả sale, hoàn thành`);
+  r.history.push({ at: tick(c), by: c.me, text: `Cửa hàng đã kiểm tra, đã nhập SON${r.orderCode ? ` ${r.orderCode}` : ""} · hoàn thành${a.note?.trim() ? ` (${a.note.trim()})` : ""}` });
+  return ok(`${r.code}: hoàn thành`);
 }
 
 // Nhân viên tự ghi chú thêm bất cứ lúc nào (khách đổi yêu cầu, xưởng báo…)
@@ -1165,7 +1179,8 @@ export const ACTIONS: Record<string, [Action | null, (c: Ctx, ...args: any[]) =>
   receiveCustomerRepair: ["customer.repair", receiveCustomerRepair, "QC nhận đồ khách từ sale"],
   sendCustomerRepair: ["customer.repair", sendCustomerRepair, "Gửi đồ khách cho xưởng"],
   customerRepairBack: ["customer.repair", customerRepairBack, "Xưởng trả đồ khách, QC kiểm tra"],
-  customerRepairDone: ["customer.repair", customerRepairDone, "Trả đồ khách cho sale"],
+  customerRepairDone: ["customer.repair", customerRepairDone, "QC trả đồ khách cho sale"],
+  storeConfirmCustomerRepair: ["customer.repair", storeConfirmCustomerRepair, "Cửa hàng kiểm tra, xác nhận nhập SON"],
   noteCustomerRepair: ["customer.repair", noteCustomerRepair, "Ghi chú đồ khách"],
   createProduct: ["product.manage", createProduct, "Thêm sản phẩm"],
   setProductStatus: ["product.manage", setProductStatus, "Đổi tình trạng sản phẩm"],
