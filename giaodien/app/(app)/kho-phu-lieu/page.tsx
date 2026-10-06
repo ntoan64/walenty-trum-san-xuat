@@ -170,7 +170,7 @@ export default function MaterialsPage() {
         title="Tồn kho" icon={Warehouse} flush
         actions={
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-          <SearchBox value={q} onChange={setQ} placeholder="Tìm mã, tên phụ liệu…" label="Tìm phụ liệu" />
+          <SearchBox options={s.materials.map(m => `${m.code} ${m.name}`)} value={q} onChange={setQ} placeholder="Tìm mã, tên phụ liệu…" label="Tìm phụ liệu" />
           <div role="group" aria-label="Lọc theo loại" className="flex max-w-full gap-1 overflow-x-auto">
             {([["all", "Tất cả"], ...CATS] as [string, string][]).map(([k, label]) => {
               const n = k === "all" ? s.materials.length : s.materials.filter(m => m.category === k).length;

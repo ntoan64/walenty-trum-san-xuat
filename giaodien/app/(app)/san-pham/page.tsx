@@ -273,7 +273,7 @@ export default function ProductsPage() {
       <Panel
         title="Danh sách sản phẩm" icon={Shirt} flush
         tag={<span className="num text-xs text-subtle">{rows.length} / {s.products.length}</span>}
-        actions={<SearchBox value={q} onChange={v => { setQ(v); setLimit(PAGE); }} placeholder="Tìm tên, SKU, barcode, màu, loại…" label="Tìm sản phẩm" />}
+        actions={<SearchBox options={[...new Set(s.products.flatMap(p => [p.name, ...(p.variants ?? []).map(v => v.sku)]))]} value={q} onChange={v => { setQ(v); setLimit(PAGE); }} placeholder="Tìm tên, SKU, barcode, màu, loại…" label="Tìm sản phẩm" />}
       >
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3 pb-2 md:px-5">
           <div role="group" aria-label="Lọc tình trạng" className="flex gap-1 overflow-x-auto">
@@ -318,16 +318,16 @@ export default function ProductsPage() {
             </thead>
             <tbody>
               {shown.length ? shown.map(({ p, cost, stock: st }) => {
-                const isOpen = open === p.id;
+                const isOpen = open === p.id || (!!q.trim() && rows.length === 1 && open !== `-${p.id}`);
                 return (
                   <Fragment key={p.id}>
                     <tr
                       className={cn("cursor-pointer", p.status === "discontinued" && "opacity-60", isOpen && "bg-brand-soft/30")}
-                      onClick={() => setOpen(isOpen ? null : p.id)}
+                      onClick={() => setOpen(isOpen ? `-${p.id}` : p.id)}
                     >
                       <td>
                         <button type="button" aria-expanded={isOpen} aria-label={`${isOpen ? "Thu gọn" : "Xem"} định mức ${p.sku}`}
-                          onClick={e => { e.stopPropagation(); setOpen(isOpen ? null : p.id); }}
+                          onClick={e => { e.stopPropagation(); setOpen(isOpen ? `-${p.id}` : p.id); }}
                           className="grid size-6 place-items-center rounded text-subtle hover:bg-surface-3">
                           <ChevronRight className={cn("size-4 transition-transform duration-200", isOpen && "rotate-90")} />
                         </button>

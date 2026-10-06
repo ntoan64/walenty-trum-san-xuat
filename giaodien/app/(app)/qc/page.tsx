@@ -44,7 +44,7 @@ export default function QCPage() {
           </div>
         }
       />
-      <SearchBox value={q} onChange={setQ} placeholder="Tìm mã lệnh, phiếu sửa, sản phẩm, lỗi…" label="Tìm trong QC" className="sm:w-80" />
+      <SearchBox options={[...new Set([...s.orders.map(o => o.code), ...s.repairs.map(r => r.code), ...s.orders.map(o => s.products.find(p => p.id === o.product)?.name ?? "")].filter(Boolean))]} value={q} onChange={setQ} placeholder="Tìm mã lệnh, phiếu sửa, sản phẩm, lỗi…" label="Tìm trong QC" className="sm:w-80" />
       <Panel title={`Hàng chờ QC (${pend.length})`} icon={PackageSearch}>
         {pend.length ? (
           <div className="flex flex-col gap-2">

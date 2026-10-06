@@ -182,7 +182,7 @@ export default function WorkshopsPage() {
       />
 
       {manage && <CreateWorkshop />}
-      {s.workshops.length > 0 && <SearchBox value={q} onChange={setQ} placeholder="Tìm xưởng, SĐT, lỗi, phiếu…" label="Tìm xưởng" className="sm:w-80" />}
+      {s.workshops.length > 0 && <SearchBox options={s.workshops.flatMap(w => [w.name, ...(w.aliases ?? [])])} value={q} onChange={setQ} placeholder="Tìm xưởng, SĐT, lỗi, phiếu…" label="Tìm xưởng" className="sm:w-80" />}
       {!groups.length && (
         <Panel><EmptyState>Chưa có xưởng nào. {manage ? "Thêm xưởng ở khối bên trên để giao lệnh sản xuất." : "Quản lý kho sẽ thêm xưởng."}</EmptyState></Panel>
       )}

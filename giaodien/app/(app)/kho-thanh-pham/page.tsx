@@ -48,7 +48,7 @@ export default function FinishedPage() {
         }
       />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <SearchBox value={search} onChange={v => { setSearch(v); setLimit(30); }} placeholder="Tìm tên, SKU, barcode, mã lệnh…" label="Tìm thành phẩm" className="sm:w-80" />
+        <SearchBox options={[...new Set(s.products.map(p => p.name))]} value={search} onChange={v => { setSearch(v); setLimit(30); }} placeholder="Tìm tên, SKU, barcode, mã lệnh…" label="Tìm thành phẩm" className="sm:w-80" />
         <ExportButton name="kho-thanh-pham" build={() => [
           { name: "Tồn thành phẩm",
             columns: [{ header: "Mã mẫu", key: "sku" }, { header: "Sản phẩm", key: "name", width: 28 }, { header: "Loại", key: "cat", width: 14 }, { header: "Phiên bản (size:SKU:tồn)", key: "variants", width: 40 }, { header: "Tồn", key: "q", fmt: "int" }, { header: "Nhập từ SX (web)", key: "web", fmt: "int" }, { header: "Giá vốn / cái", key: "c", fmt: "money" }, { header: "Giá trị tồn", key: "v", fmt: "money" }],

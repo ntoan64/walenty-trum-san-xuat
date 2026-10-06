@@ -233,7 +233,7 @@ export default function OrdersPage() {
       />
       <CreateOrder />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <SearchBox value={q} onChange={setQ} placeholder="Tìm mã lệnh, sản phẩm, SKU, xưởng…" label="Tìm lệnh sản xuất" className="sm:w-80" />
+        <SearchBox options={[...new Set([...s.orders.map(o => o.group ?? o.code), ...s.orders.map(o => byId(s.products, o.product)?.name ?? ""), ...s.workshops.filter(w => w.kind !== "ncc").map(w => w.name)].filter(Boolean))]} value={q} onChange={setQ} placeholder="Tìm mã lệnh, sản phẩm, SKU, xưởng…" label="Tìm lệnh sản xuất" className="sm:w-80" />
         <div className="flex items-center gap-3">
           {q && <span className="text-[13px] text-muted-foreground">Tìm thấy <b className="num text-fg">{found.filter(o => !o.cancelled).length}</b> lệnh</span>}
           {cancelledList.length > 0 && (
