@@ -4,6 +4,7 @@ import { useId, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { matches } from "@/lib/search";
 import { cn } from "@/lib/utils";
+import { usePopoverPos } from "@/lib/use-popover-pos";
 
 export interface PickItem { id: string; label: string; sub?: string; search?: (string | undefined)[] }
 
@@ -18,6 +19,7 @@ export function SearchPicker({ items, value, onPick, label, placeholder, id }: {
   const [hi, setHi] = useState(0);
   const box = useRef<HTMLDivElement>(null);
   const listId = useId();
+  const pos = usePopoverPos(box, open);
   const cur = items.find(x => x.id === value);
   const found = items.filter(x => matches(q, x.label, x.sub, ...(x.search ?? []))).slice(0, MAX);
   const pick = (i: number) => { const x = found[i]; if (!x) return; onPick(x.id); setQ(""); setOpen(false); };
@@ -37,8 +39,8 @@ export function SearchPicker({ items, value, onPick, label, placeholder, id }: {
           else if (e.key === "Escape") setOpen(false);
         }}
       />
-      {open && q && (
-        <ul id={listId} role="listbox" className="absolute z-30 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-line bg-surface p-1 shadow-lg">
+      {open && (
+        <ul id={listId} role="listbox" style={pos} className="overflow-auto rounded-lg border border-line bg-surface p-1 shadow-lg">
           {found.map((x, i) => (
             <li key={x.id} role="option" aria-selected={hi === i}>
               <button type="button" tabIndex={-1} onMouseEnter={() => setHi(i)} onMouseDown={e => e.preventDefault()} onClick={() => pick(i)}

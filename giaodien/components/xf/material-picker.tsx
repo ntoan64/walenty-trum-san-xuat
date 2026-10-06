@@ -6,6 +6,7 @@ import { MATERIAL_CATEGORIES, type Material } from "@core";
 import { matches } from "@/lib/search";
 import { nf } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { usePopoverPos } from "@/lib/use-popover-pos";
 
 const MAX = 30;
 
@@ -18,6 +19,7 @@ export function MaterialPicker({ materials, value, onPick, onNew, label }: {
   const [hi, setHi] = useState(0);
   const box = useRef<HTMLDivElement>(null);
   const listId = useId();
+  const pos = usePopoverPos(box, open);
   const found = materials.filter(m => matches(q, m.code, m.name, m.supplier, m.supplierCode, MATERIAL_CATEGORIES[m.category])).slice(0, MAX);
   const options = [...found.map(m => ({ m })), ...(q.trim() ? [{ m: undefined }] : [])];
   const pick = (i: number) => {
@@ -53,7 +55,7 @@ export function MaterialPicker({ materials, value, onPick, onNew, label }: {
         </div>
       )}
       {open && (q || !value) && (
-        <ul id={listId} role="listbox" className="absolute z-30 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-line bg-surface p-1 shadow-lg">
+        <ul id={listId} role="listbox" style={pos} className="overflow-auto rounded-lg border border-line bg-surface p-1 shadow-lg">
           {options.map((o, i) => (
             <li key={o.m?.id ?? "new"} role="option" aria-selected={hi === i}>
               <button type="button" tabIndex={-1} onMouseEnter={() => setHi(i)} onMouseDown={e => e.preventDefault()} onClick={() => pick(i)}
