@@ -71,7 +71,7 @@ export function ImportTable() {
           <>
             <Summary rows={[
               ...rows.map(r => [label(r), `${nf(+r.qty || 0, 2)} ${unitOf(r)} × ${vnd(+r.price || 0)}`] as [string, string]),
-              ["Nhà cung cấp", supplier.trim() || "Không ghi"],
+              ["Nhập từ nhà cung cấp", supplier.trim() || "Không ghi"],
               ["Tổng tiền", vnd(total)],
             ]} />
             {rows.some(r => r.material === NEW) && <p className="mt-2 text-xs">Phụ liệu mới được tạo với mã tự sinh và tình trạng Đang dùng.</p>}

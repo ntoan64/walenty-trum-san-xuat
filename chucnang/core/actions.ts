@@ -638,8 +638,12 @@ export function importBatch(c: Ctx, a: { supplier: string; lines: ImportLine[] }
     if (!r.ok) return fail(row + r.error);
   }
   const created = a.lines.filter(l => l.newMaterial).length;
+  // ghi rõ nhập từ nhà cung cấp nào
+  const sup = a.supplier.trim() || "không ghi nhà cung cấp";
+  const total = a.lines.reduce((t, l) => t + l.qty * l.price, 0);
+  notify(c, ["quanly", "kho"], `📥 Nhập kho từ ${sup}: ${[...ids].map(id => { const m = byId(c.s.materials, id)!; const l = a.lines.find(x => (x.materialId ?? "") === id); return `${m.code} ${m.name}${l ? ` ${nf(l.qty, 2)} ${m.unit}` : ""}`; }).join(", ")} · tổng ${vnd(total)}.`);
   notifyWaiting(c, [...ids]);
-  return ok(`Đã nhập kho ${a.lines.length} dòng${created ? `, thêm ${created} phụ liệu mới` : ""}`);
+  return ok(`Đã nhập kho ${a.lines.length} dòng từ ${sup}${created ? `, thêm ${created} phụ liệu mới` : ""}`);
 }
 
 /* ---------- thông báo soạn tay cho từng thành viên ---------- */

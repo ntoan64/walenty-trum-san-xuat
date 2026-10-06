@@ -187,7 +187,7 @@ export default function WorkshopsPage() {
         <Panel><EmptyState>Chưa có xưởng nào. {manage ? "Thêm xưởng ở khối bên trên để giao lệnh sản xuất." : "Quản lý kho sẽ thêm xưởng."}</EmptyState></Panel>
       )}
 
-      <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2">
       {(["xuong", "ncc"] as const).map(kind => {
         const col = groups.filter(g => (g.w.kind ?? "xuong") === kind);
         return (
