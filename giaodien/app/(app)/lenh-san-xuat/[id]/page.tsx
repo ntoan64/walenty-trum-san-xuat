@@ -6,8 +6,8 @@ import Link from "next/link";
 import { Coins, PackageOpen, Pencil, Plus, Scale, Settings2, Trash2, Wrench } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  byId, forColor, needFor, closeChecklist, canClose, DEFECT_KIND, DEFECTS, isBalanced, knownDefects, sizeProgress, isOrderLate, LOSS_ALLOWED, SIZES,
-  type Batch, type DefectLine, type ProductionOrder,
+  byId, remainingIssue, closeChecklist, canClose, DEFECT_KIND, DEFECTS, isBalanced, knownDefects, sizeProgress, isOrderLate, LOSS_ALLOWED, SIZES,
+  type Batch, type DefectLine, type Material, type ProductionOrder,
 } from "@core";
 import { Button } from "@/components/ui/button";
 import { useStore, A } from "@/lib/store";
@@ -228,6 +228,57 @@ function OrderCost({ o, editable }: { o: ProductionOrder; editable: boolean }) {
   );
 }
 
+// Xuất phụ liệu từng phần cho cả lệnh: tick mã gửi lần này, phần còn lại gửi sau
+function IssueBox({ o }: { o: ProductionOrder }) {
+  const { data: s, can } = useStore();
+  const actC = useConfirmAction();
+  const lines = s.orders.filter(x => !x.cancelled && x.pendingIssue && (o.group ? x.group === o.group : x.id === o.id));
+  const agg = new Map<string, { m: Material; need: number; issued: number; rest: number }>();
+  for (const x of lines) for (const r of remainingIssue(s, x)) {
+    const cur = agg.get(r.material.id) ?? { m: r.material, need: 0, issued: 0, rest: 0 };
+    agg.set(r.material.id, { m: r.material, need: cur.need + r.need, issued: cur.issued + r.issued, rest: cur.rest + r.qty });
+  }
+  const list = [...agg.values()].filter(x => x.need > 0);
+  const todo = list.filter(x => x.rest > 0.0001);
+  const [off, setOff] = useState<string[]>([]);
+  const pick = todo.filter(x => !off.includes(x.m.id) && x.rest <= x.m.stock + 1e-9);
+  const short = todo.filter(x => x.rest > x.m.stock + 1e-9);
+  return (
+    <ActionBox tone={short.length ? "warn" : undefined} title={o.issuedAt ? "Còn phụ liệu chưa xuất" : "Chưa xuất phụ liệu"}
+      desc={<>Phụ liệu cho {lines.length > 1 ? <>cả lệnh <b>{o.group}</b> ({lines.length} sản phẩm)</> : <>{o.qty} cái</>}. Tick các mã gửi lần này (vd cúc + vải chính), phần còn lại gửi sau. Bấm xuất mới trừ kho.</>}>
+      {list.length ? (
+        <ul className="mb-3 divide-y divide-line overflow-hidden rounded-lg bg-surface text-[13px]">
+          {list.map(({ m, need, issued, rest }) => {
+            const done = rest <= 0.0001, lack = rest > m.stock + 1e-9;
+            return (
+              <li key={m.id} className={cn("flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-2", done && "opacity-60")}>
+                <input type="checkbox" aria-label={`Xuất ${m.code}`} disabled={done || lack || !can("order.create")}
+                  checked={!done && !lack && !off.includes(m.id)} onChange={e => setOff(e.target.checked ? off.filter(x => x !== m.id) : [...off, m.id])} className="size-4 accent-[var(--brand)]" />
+                <span className="min-w-0 flex-1"><b className="num text-brand">{m.code}</b> · {m.name}</span>
+                <span className="num whitespace-nowrap">
+                  {done ? <span className="text-ok">Đã xuất đủ {nf(need, 2)} {m.unit}</span> : <>
+                    còn <b>{nf(rest, 2)}</b>{issued > 0 && <span className="text-muted-foreground"> (đã xuất {nf(issued, 2)}/{nf(need, 2)})</span>} · tồn {nf(m.stock, 2)}
+                    {lack && <> · thiếu <b className="text-bad">{nf(rest - m.stock, 2)}</b></>} {m.unit}
+                  </>}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      ) : <p className="mb-3 text-[13px] text-bad">Chưa có định mức phụ liệu cho sản phẩm này.</p>}
+      {can("order.create") && (
+        <Button disabled={!pick.length} onClick={() => actC(
+          { title: "Xuất phụ liệu, trừ kho?", confirmLabel: "Xuất phụ liệu",
+            description: <Summary rows={[["Lệnh", o.group ?? o.code], ["Xưởng", wsName(s, o.workshop)], ...pick.map(x => [`${x.m.code} · ${x.m.name}`, `${nf(x.rest, 2)} ${x.m.unit}`] as [string, string]),
+              ...(todo.length > pick.length ? [["Gửi sau", `${todo.length - pick.length} mã`] as [string, string]] : [])]} /> },
+          "order.create", A.issueMaterials, lines.map(x => x.id), pick.map(x => x.m.id),
+        )}>Xuất {pick.length === todo.length ? "tất cả" : `${pick.length} mã đã chọn`}</Button>
+      )}
+      {short.length > 0 && <p className="mt-2 text-[12px] text-bad">{short.length} mã đang thiếu, nhập kho đủ rồi xuất sau.</p>}
+    </ActionBox>
+  );
+}
+
 function LossForm({ o, max }: { o: ProductionOrder; max: number }) {
   const act = useConfirmAction();
   const { data: s } = useStore();
@@ -416,37 +467,10 @@ export default function OrderDetailPage() {
     blocks.push(
       <ActionBox key="cancelled" tone="warn" title={`Lệnh đã hủy ngày ${fmtD(o.cancelled.at)}`} desc={<>Bởi {o.cancelled.by}. Lý do: <b>{o.cancelled.reason}</b></>} />,
     );
-  } else if (o.step === "cut" && o.pendingIssue) {
-    // chưa xuất phụ liệu: dự báo cần chuẩn bị cho cả lệnh (mọi dòng chưa xuất cùng mã lệnh)
-    const lines = s.orders.filter(x => !x.cancelled && x.pendingIssue && (o.group ? x.group === o.group : x.id === o.id));
-    const need = new Map<string, number>();
-    for (const x of lines) for (const n of needFor(forColor(prodOf(s, x), x.color), x.qty, s.materials)) need.set(n.material.id, (need.get(n.material.id) ?? 0) + n.qty);
-    const list = [...need].map(([id, q]) => ({ m: byId(s.materials, id)!, q }));
-    const short = list.filter(x => x.q > x.m.stock);
-    blocks.push(
-      <ActionBox key="issue" tone={short.length ? "warn" : undefined} title="Chưa xuất phụ liệu"
-        desc={<>Phụ liệu cần chuẩn bị cho {lines.length > 1 ? <>cả lệnh <b>{o.group}</b> ({lines.length} sản phẩm)</> : <>{o.qty} cái</>}. Bấm Xuất phụ liệu khi giao cho {wsName(s, o.workshop)}, lúc đó mới trừ kho.</>}>
-        {list.length ? (
-          <ul className="mb-3 divide-y divide-line overflow-hidden rounded-lg bg-surface text-[13px]">
-            {list.map(({ m, q }) => (
-              <li key={m.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 px-3 py-2">
-                <span><b className="num text-brand">{m.code}</b> · {m.name}</span>
-                <span className="num whitespace-nowrap">cần <b>{nf(q, 2)}</b> · tồn {nf(m.stock, 2)}{q > m.stock && <> · thiếu <b className="text-bad">{nf(q - m.stock, 2)}</b></>} {m.unit}</span>
-              </li>
-            ))}
-          </ul>
-        ) : <p className="mb-3 text-[13px] text-bad">Chưa có định mức phụ liệu cho sản phẩm này.</p>}
-        {can("order.create") && (
-          <Button disabled={!!short.length || !list.length} onClick={() => actC(
-            { title: "Xuất phụ liệu, trừ kho?", confirmLabel: "Xuất phụ liệu",
-              description: <Summary rows={[["Lệnh", o.group ?? o.code], ["Xưởng", wsName(s, o.workshop)], ...list.map(({ m, q }) => [`${m.code} · ${m.name}`, `${nf(q, 2)} ${m.unit}`] as [string, string])]} /> },
-            "order.create", A.issueMaterials, lines.map(x => x.id),
-          )}>Xuất phụ liệu{lines.length > 1 ? ` cả lệnh (${lines.length} sản phẩm)` : ""}</Button>
-        )}
-        {short.length > 0 && <p className="mt-2 text-[12px] text-bad">Thiếu {short.length} mã, nhập kho đủ rồi mới xuất được.</p>}
-      </ActionBox>,
-    );
+  } else if (o.step === "cut" && o.pendingIssue && !o.issuedAt) {
+    blocks.push(<IssueBox key="issue" o={o} />);
   } else if (o.step === "cut") {
+    if (o.pendingIssue) blocks.push(<IssueBox key="issue" o={o} />);
     blocks.push(
       <ActionBox key="prep" title="Nguyên phụ liệu cần chuẩn bị" desc={`Đã xuất kho theo định mức cho ${o.qty} cái. Chuẩn bị đủ để giao ${wsName(s, o.workshop)} cắt.`}>
         {issuedFor(s, o).length ? (
@@ -471,6 +495,7 @@ export default function OrderDetailPage() {
       </ActionBox>,
     );
   } else if (o.step !== "done") {
+    if (o.pendingIssue) blocks.push(<IssueBox key="issue" o={o} />);
     if (b.notReturned > 0 && can("order.receive")) blocks.push(<ReceiveForm key={`rcv-${b.notReturned}`} o={o} max={b.notReturned} ws={wsName(s, o.workshop)} />);
     if (can("qc.save")) pending.forEach(bt => blocks.push(<QCForm key={bt.id} o={o} b={bt} />));
     else if (pending.length) blocks.push(<ActionBox key="pq" title={`${b.pendingQC} cái đang chờ QC`} desc="Team QC sẽ kiểm và nhập kết quả." />);

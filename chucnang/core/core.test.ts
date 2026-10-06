@@ -264,3 +264,30 @@ describe('đồng bộ file NVL', () => {
     expect(importNvl(c, { openingDate: '2025-09-30', materials: [{ code: 'VC-0001', name: 'x', unit: 'mét', category: 'vai', price: 1, opening: 0 }], moves: [], boms: [] }).ok).toBe(false)
   })
 })
+
+describe('xuất phụ liệu từng phần', () => {
+  it('gửi vải trước, cúc sau; nhập cúc thì báo lệnh đang chờ', async () => {
+    const A = await import('./actions')
+    const { createBaseState } = await import('./state')
+    const s = createBaseState()
+    const c = { s, me: 'Phan Anh', meId: 'u1', now: new Date() }
+    const due = new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10)
+    A.createWorkshop(c, { name: 'Xưởng A', area: '', contactName: '', phone: '0903112456' })
+    A.createMaterial(c, { name: 'Vải', unit: 'mét', category: 'vai', minStock: 0, okStock: 0 })
+    A.createMaterial(c, { name: 'Cúc', unit: 'cái', category: 'nut', minStock: 0, okStock: 0 })
+    const [vai, cuc] = s.materials
+    A.importMaterial(c, { materialId: vai.id, qty: 100, price: 1000, supplier: '' })
+    A.createProduct(c, { sku: 'SP1', name: 'Áo', laborCost: 0, bom: [{ material: vai.id, qtyPerUnit: 2 }, { material: cuc.id, qtyPerUnit: 4 }] })
+    const id = (A.createOrders(c, { workshopId: s.workshops[0].id, dueDate: due, items: [{ productId: s.products[0].id, sizes: [{ size: 'M', qty: 10 }] }] }) as { id: string }).id
+    expect(A.issueMaterials(c, [id]).ok).toBe(false) // thiếu cúc → xuất tất cả không được
+    expect(A.issueMaterials(c, [id], [vai.id]).ok).toBe(true) // gửi vải trước
+    expect(vai.stock).toBe(80)
+    expect(s.orders[0].pendingIssue).toBe(true)
+    expect(A.confirmCut(c, id).ok).toBe(true) // có vải là cắt được
+    A.importMaterial(c, { materialId: cuc.id, qty: 50, price: 500, supplier: '' })
+    expect(s.notifications[0].text).toMatch(/đang chờ xuất[\s\S]*Cúc[\s\S]*cần 40/)
+    expect(A.issueMaterials(c, [id]).ok).toBe(true) // gửi cúc sau
+    expect(cuc.stock).toBe(10)
+    expect(s.orders[0].pendingIssue).toBe(false)
+  })
+})

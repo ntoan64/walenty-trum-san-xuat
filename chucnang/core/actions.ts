@@ -2,7 +2,7 @@
 // Mỗi hàm nhận bản nháp state (đã clone) và sửa trực tiếp; trả lỗi thì bản nháp bị bỏ.
 import {
   applyImport, applyIssue, byId, round2, calcBalance, canClose, DAY, REPAIR_DUE_DAYS,
-  MATERIAL_CATEGORIES, MATERIAL_STATUS, nextMaterialCode, colorsOf, forColor, costBreakdown, okLevel, isLive, PRODUCT_STATUS, needFor, shortages, unitCost, unusableMaterials, sizeProgress, validateDefectLines, validateQC, validateRequc,
+  MATERIAL_CATEGORIES, MATERIAL_STATUS, nextMaterialCode, colorsOf, forColor, costBreakdown, bomOf, remainingIssue, okLevel, isLive, PRODUCT_STATUS, needFor, shortages, unitCost, unusableMaterials, sizeProgress, validateDefectLines, validateQC, validateRequc,
   type BomLine, type Costing, type WorkshopRate, type DefectLine, type EventType, type SizeQty, type ItemStatus, type Material, type MaterialCategory, type ProductionOrder, type ProductVariant, type Role, type Action,
 } from "./index";
 import type { DataState } from "./state";
@@ -72,7 +72,23 @@ function getOrder(c: Ctx, id: string) {
 }
 
 /* ---------- kho phụ liệu ---------- */
-export function importMaterial(c: Ctx, a: { materialId: string; qty: number; price: number; supplier: string }): Result {
+// Nhập phụ liệu xong: báo các lệnh đang chờ xuất mã đó (đặt hàng nào cần, xuất được chưa)
+function notifyWaiting(c: Ctx, materialIds: string[]) {
+  const ids = new Set(materialIds);
+  const rows = new Map<string, string[]>();
+  for (const o of c.s.orders) {
+    if (o.cancelled || !o.pendingIssue) continue;
+    for (const r of remainingIssue(c.s, o)) if (ids.has(r.material.id) && r.qty > 0) {
+      const k = r.material.id;
+      rows.set(k, [...(rows.get(k) ?? []), `${o.code} ${prodOf(c.s, o).name}${o.color ? ` ${o.color}` : ""} (${wsName(c.s, o.workshop)}) cần ${nf(r.qty, 1)}`]);
+    }
+  }
+  if (!rows.size) return;
+  const text = [...rows].map(([id, list]) => { const m = byId(c.s.materials, id)!; return `• ${m.code} ${m.name} (tồn ${nf(m.stock, 1)} ${m.unit}):\n   ${list.join("\n   ")}`; }).join("\n");
+  notify(c, ["quanly", "kho"], `📦 Vừa nhập phụ liệu, có lệnh đang chờ xuất:\n${text}\nVào lệnh để bấm Xuất phụ liệu.`);
+}
+
+export function importMaterial(c: Ctx, a: { materialId: string; qty: number; price: number; supplier: string }, silent = false): Result {
   const m = byId(c.s.materials, a.materialId);
   if (!m) return fail("Không tìm thấy phụ liệu");
   if (m.status === "discontinued") return fail(`${m.code} đã ngừng dùng, không nhập thêm được`);
@@ -84,6 +100,7 @@ export function importMaterial(c: Ctx, a: { materialId: string; qty: number; pri
   applyImport(m, a.qty, a.price);
   c.s.materialTxns.push({ id: uid(c, "t"), material: m.id, type: "in", qty: a.qty, price: a.price, supplier: a.supplier.trim() || "Không ghi", stockAfter: m.stock, avgAfter: m.avgPrice, by: c.me, at: tick(c) });
   checkLow(c, m);
+  if (!silent) notifyWaiting(c, [m.id]);
   return ok(`Đã nhập ${nf(a.qty, 2)} ${m.unit} ${m.code}, giá BQ mới ${vnd(m.avgPrice)}`);
 }
 
@@ -589,10 +606,11 @@ export function importBatch(c: Ctx, a: { supplier: string; lines: ImportLine[] }
     if (!id) return fail(row + "chọn phụ liệu");
     if (ids.has(id)) return fail(row + "phụ liệu bị lặp, gộp vào 1 dòng");
     ids.add(id);
-    const r = importMaterial(c, { materialId: id, qty: l.qty, price: l.price, supplier: a.supplier });
+    const r = importMaterial(c, { materialId: id, qty: l.qty, price: l.price, supplier: a.supplier }, true);
     if (!r.ok) return fail(row + r.error);
   }
   const created = a.lines.filter(l => l.newMaterial).length;
+  notifyWaiting(c, [...ids]);
   return ok(`Đã nhập kho ${a.lines.length} dòng${created ? `, thêm ${created} phụ liệu mới` : ""}`);
 }
 
@@ -675,38 +693,40 @@ export function createOrders(c: Ctx, a: { workshopId: string; dueDate: string; i
 }
 
 // Xuất phụ liệu cho các dòng lệnh chưa xuất (thường là cả lệnh); thiếu mã nào thì báo, không trừ gì
-export function issueMaterials(c: Ctx, orderIds: string[]): Result {
+// Xuất phụ liệu, được xuất từng phần: materialIds = các mã muốn gửi lần này (bỏ trống = tất cả phần còn lại).
+// Xuất đủ mọi mã theo định mức thì lệnh hết "chưa xuất phụ liệu".
+export function issueMaterials(c: Ctx, orderIds: string[], materialIds?: string[]): Result {
   const orders = (orderIds ?? []).map(id => getOrder(c, id)).filter((o): o is ProductionOrder => !!o && !!o.pendingIssue);
   if (!orders.length) return fail("Không có dòng lệnh nào chờ xuất phụ liệu");
+  const only = materialIds?.length ? new Set(materialIds) : null;
+  const nb = orders.filter(o => !bomOf(prodOf(c.s, o), o.color).length);
+  if (nb.length) return fail(`${nb.map(x => x.code).join(", ")} chưa có định mức phụ liệu`);
+  const per = orders.map(o => ({ o, rest: remainingIssue(c.s, o).filter(r => r.qty > 0 && (!only || only.has(r.material.id))) }));
   const total = new Map<string, number>();
-  const per = orders.map(o => {
-    const p = forColor(prodOf(c.s, o), o.color);
-    if (!p.bom.length) return { o, need: [] as { material: Material; qty: number }[], noBom: true };
-    const need = needFor(p, o.qty, c.s.materials);
-    for (const n of need) total.set(n.material.id, (total.get(n.material.id) ?? 0) + n.qty);
-    return { o, need, noBom: false };
-  });
-  const nb = per.filter(x => x.noBom);
-  if (nb.length) return fail(`${nb.map(x => x.o.code).join(", ")} chưa có định mức phụ liệu`);
-  const short = [...total].map(([id, q]) => ({ m: byId(c.s.materials, id)!, q: round2(q) })).filter(x => x.q > x.m.stock);
+  for (const { rest } of per) for (const r of rest) total.set(r.material.id, (total.get(r.material.id) ?? 0) + r.qty);
+  if (!total.size) return fail("Không có mục nào cần xuất");
+  const short = [...total].map(([id, q]) => ({ m: byId(c.s.materials, id)!, q: round2(q) })).filter(x => x.q > x.m.stock + 1e-9);
   if (short.length) return fail(`Không đủ phụ liệu: ${short.map(x => `${x.m.code} cần ${nf(x.q, 1)}, còn ${nf(x.m.stock, 1)} ${x.m.unit}`).join("; ")}`);
-  for (const { o, need } of per) {
-    for (const n of need) {
-      applyIssue(n.material, n.qty);
-      c.s.materialTxns.push({ id: uid(c, "t"), material: n.material.id, type: "out", qty: n.qty, order: o.code, stockAfter: n.material.stock, avgAfter: n.material.avgPrice, by: c.me, at: tick(c) });
+  for (const { o, rest } of per) {
+    for (const r of rest) {
+      applyIssue(r.material, r.qty);
+      c.s.materialTxns.push({ id: uid(c, "t"), material: r.material.id, type: "out", qty: r.qty, order: o.code, stockAfter: r.material.stock, avgAfter: r.material.avgPrice, by: c.me, at: tick(c) });
     }
-    o.pendingIssue = false; o.issuedAt = c.now; o.issuedBy = c.me;
+    if (rest.length) { o.issuedAt ??= c.now; o.issuedBy ??= c.me; }
+    if (!remainingIssue(c.s, o).some(r => r.qty > 0)) o.pendingIssue = false;
   }
   for (const id of total.keys()) checkLow(c, byId(c.s.materials, id)!);
   const name = orders[0].group ?? orders.map(o => o.code).join(", ");
-  notify(c, ["quanly", "kho"], `📤 Đã xuất phụ liệu cho ${name}: ${[...total].map(([id, q]) => { const m = byId(c.s.materials, id)!; return `${m.code} ${nf(q, 1)} ${m.unit}`; }).join(", ")}.`);
-  return ok(`Đã xuất phụ liệu cho ${orders.length} dòng lệnh`);
+  const left = orders.filter(o => o.pendingIssue).length;
+  notify(c, ["quanly", "kho"], `📤 Đã xuất phụ liệu cho ${name}: ${[...total].map(([id, q]) => { const m = byId(c.s.materials, id)!; return `${m.code} ${nf(q, 1)} ${m.unit}`; }).join(", ")}${left ? ". Còn phụ liệu chưa xuất." : "."}`);
+  return ok(`Đã xuất ${total.size} mã phụ liệu${left ? ", còn phần chưa xuất" : ", đã đủ theo định mức"}`);
 }
 
 export function confirmCut(c: Ctx, orderId: string): Result {
   const o = getOrder(c, orderId);
   if (!o || o.step !== "cut") return fail("Lệnh không ở bước chờ cắt");
-  if (o.pendingIssue) return fail("Chưa xuất phụ liệu cho lệnh này, bấm Xuất phụ liệu trước");
+  // xuất được 1 phần (vd vải chính) là cắt được; phần còn lại gửi sau
+  if (o.pendingIssue && !o.issuedAt) return fail("Chưa xuất phụ liệu cho lệnh này, bấm Xuất phụ liệu trước");
   o.step = "sew";
   event(c, "issue", o, o.qty);
   notify(c, ["quanly", "kho"], `✂️ ${o.code}: ${wsName(c.s, o.workshop)} đã cắt xong ${o.qty} cái, bắt đầu may.`);

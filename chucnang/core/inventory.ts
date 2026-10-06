@@ -39,14 +39,28 @@ export const hasBom = (p: Product) => p.bom.length > 0 || Object.values(p.bomByC
 // Màu của mẫu (theo phiên bản Sapo)
 export const colorsOf = (p: Product) => [...new Set((p.variants ?? []).map(v => v.color).filter((x): x is string => !!x))]
 
+// Phần phụ liệu còn phải xuất cho 1 dòng lệnh = định mức × số lượng − đã xuất (trừ phần hoàn kho)
+export function remainingIssue(s: { products: Product[]; materials: Material[]; materialTxns: { material: string; type: string; qty: number; order?: string }[] }, o: { code: string; product: string; color?: string; qty: number }) {
+  const p = byId(s.products, o.product)
+  if (!p) return []
+  const issued = new Map<string, number>()
+  for (const t of s.materialTxns) if (t.order === o.code) {
+    if (t.type === 'out') issued.set(t.material, (issued.get(t.material) ?? 0) + t.qty)
+    else if (t.type === 'adjust') issued.set(t.material, (issued.get(t.material) ?? 0) - t.qty)
+  }
+  return bomOf(p, o.color).map(b => {
+    const m = byId(s.materials, b.material)!
+    const need = round2(b.qtyPerUnit * o.qty), done = round2(issued.get(b.material) ?? 0)
+    return { material: m, need, issued: done, qty: round2(Math.max(0, need - done)) }
+  }).filter(r => r.material)
+}
+
 // Phụ liệu cần chuẩn bị: tổng định mức của các lệnh chưa xuất phụ liệu (không tách theo xưởng)
-export function materialForecast(products: Product[], materials: Material[], orders: { product: string; color?: string; qty: number; cancelled?: unknown; pendingIssue?: boolean }[]) {
+export function materialForecast(products: Product[], materials: Material[], orders: { code: string; product: string; color?: string; qty: number; cancelled?: unknown; pendingIssue?: boolean }[], materialTxns: { material: string; type: string; qty: number; order?: string }[] = []) {
   const need = new Map<string, number>()
   for (const o of orders) {
     if (o.cancelled || !o.pendingIssue) continue
-    const p = byId(products, o.product)
-    if (!p) continue
-    for (const b of bomOf(p, o.color)) need.set(b.material, (need.get(b.material) ?? 0) + b.qtyPerUnit * o.qty)
+    for (const r of remainingIssue({ products, materials, materialTxns }, o)) if (r.qty > 0) need.set(r.material.id, (need.get(r.material.id) ?? 0) + r.qty)
   }
   return [...need].map(([id, qty]) => {
     const m = byId(materials, id)

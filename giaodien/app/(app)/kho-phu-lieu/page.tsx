@@ -88,7 +88,7 @@ export default function MaterialsPage() {
   const list = s.materials.filter(m => (cat === "all" || m.category === cat) && matches(q, m.code, m.name, MATERIAL_CATEGORIES[m.category], m.unit, m.supplier, m.supplierCode, m.note));
   const manage = can("material.manage");
   // tổng định mức các lệnh chưa xuất phụ liệu (không tách xưởng)
-  const forecast = materialForecast(s.products, s.materials, s.orders);
+  const forecast = materialForecast(s.products, s.materials, s.orders, s.materialTxns);
   const shortN = forecast.filter(x => x.short > 0).length;
   const hist = s.materialTxns
     .filter(t => filter === "all" || t.material === filter)
