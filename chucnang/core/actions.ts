@@ -94,6 +94,7 @@ const CODE_RE = /^[A-Za-z0-9][A-Za-z0-9-]{1,19}$/;
 function thresholdError(min: number, ok: number) {
   if (!(min >= 0) || !(ok >= 0)) return "Ngưỡng không hợp lệ";
   if (min > LIMITS.minStock || ok > LIMITS.minStock) return "Ngưỡng quá lớn";
+  if (min === 0 && ok === 0) return null; // không đặt ngưỡng = không báo hết / báo đủ
   if (ok <= min) return "Ngưỡng báo đủ phải lớn hơn ngưỡng báo hết";
   return null;
 }
@@ -122,6 +123,22 @@ export function setMaterialStatus(c: Ctx, id: string, status: ItemStatus): Resul
   m.status = status;
   if (status === "active") checkLow(c, m);
   return ok(`${m.code}: ${MATERIAL_STATUS[status]}`);
+}
+
+// Sửa thông tin phụ liệu: mã, tên, đơn vị, loại (lịch sử nhập / xuất nối theo id nên đổi mã không mất)
+export function updateMaterial(c: Ctx, id: string, a: { code: string; name: string; unit: string; category: MaterialCategory }): Result {
+  const m = byId(c.s.materials, id);
+  if (!m) return fail("Không tìm thấy phụ liệu");
+  const code = a.code.trim().toUpperCase(), name = a.name.trim(), unit = a.unit.trim();
+  if (!CODE_RE.test(code)) return fail("Mã chỉ gồm chữ, số, dấu gạch ngang (2–20 ký tự)");
+  if (c.s.materials.some(x => x.id !== id && x.code === code)) return fail(`Mã ${code} đã có`);
+  if (!name) return fail("Nhập tên phụ liệu");
+  if (name.length > LIMITS.name) return fail("Tên phụ liệu quá dài");
+  if (!unit || unit.length > 20) return fail("Đơn vị tính không hợp lệ");
+  if (!(a.category in MATERIAL_CATEGORIES)) return fail("Chọn loại phụ liệu");
+  const old = m.code;
+  Object.assign(m, { code, name, unit, category: a.category });
+  return ok(old === code ? `Đã sửa ${code}` : `Đã đổi mã ${old} → ${code}`);
 }
 
 export function setThresholds(c: Ctx, id: string, a: { minStock: number; okStock: number }): Result {
@@ -942,6 +959,7 @@ export const ACTIONS: Record<string, [Action | null, (c: Ctx, ...args: any[]) =>
   importSapo: ["product.manage", importSapo, "Nhập sản phẩm từ Sapo"],
   importCosting: ["user.manage", importCosting, "Đồng bộ file tính giá"],
   importNvl: ["user.manage", importNvl, "Đồng bộ file nguyên vật liệu"],
+  updateMaterial: ["material.manage", updateMaterial, "Sửa phụ liệu"],
   setProductBom: ["product.manage", setProductBom, "Sửa định mức sản phẩm"],
   createOrder: ["order.create", createOrder, "Tạo lệnh sản xuất"],
   confirmCut: ["order.cut", confirmCut, "Xác nhận đã cắt"],

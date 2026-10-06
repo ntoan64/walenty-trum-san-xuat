@@ -20,21 +20,18 @@ import { ImportTable } from "@/components/xf/import-table";
 import { StatusSelect } from "@/components/xf/status-select";
 import { useDraft } from "@/lib/use-draft";
 import { ExportButton } from "@/components/xf/export-button";
-import { EmptyState, NumberField, PageHeader, Panel, StatCard, StatusPill, TableWrap, Tag } from "@/components/xf/basics";
+import { EmptyState, Field, PageHeader, Panel, StatCard, StatusPill, TableWrap, Tag } from "@/components/xf/basics";
 
 const CATS = Object.entries(MATERIAL_CATEGORIES) as [MaterialCategory, string][];
 
-/* ---------- Sửa ngưỡng báo hết / báo đủ ---------- */
-function ThresholdDialog({ m, onClose }: { m: Material; onClose: () => void }) {
+/* ---------- Sửa phụ liệu: mã, tên, đơn vị, loại ---------- */
+function EditMaterialDialog({ m, onClose }: { m: Material; onClose: () => void }) {
   const act = useAction();
-  const [f, setF] = useState({ min: String(m.minStock), ok: String(okLevel(m)) });
+  const [f, setF] = useState({ code: m.code, name: m.name, unit: m.unit, category: m.category });
   const [busy, setBusy] = useState(false);
-  const min = +f.min || 0, okv = +f.ok || 0;
-  const err = okv <= min ? "Ngưỡng báo đủ phải lớn hơn ngưỡng báo hết" : null;
   const save = async () => {
-    if (err) return;
     setBusy(true);
-    const r = await act("material.manage", A.setThresholds, m.id, { minStock: min, okStock: okv });
+    const r = await act("material.manage", A.updateMaterial, m.id, f);
     setBusy(false);
     if (r.ok) onClose();
   };
@@ -42,19 +39,30 @@ function ThresholdDialog({ m, onClose }: { m: Material; onClose: () => void }) {
     <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="font-serif text-lg text-brand">Ngưỡng thông báo · {m.code}</DialogTitle>
-          <DialogDescription>{m.name} · đang tồn <b className="num">{nf(m.stock, 1)} {m.unit}</b></DialogDescription>
+          <DialogTitle className="font-serif text-lg text-brand">Sửa phụ liệu · {m.code}</DialogTitle>
+          <DialogDescription>Đang tồn <b className="num">{nf(m.stock, 1)} {m.unit}</b>. Đổi mã không ảnh hưởng lịch sử nhập / xuất.</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
-          <NumberField id="th-min" label={`Báo hết khi dưới (${m.unit})`} min={0} step="any" value={f.min} onChange={v => setF({ ...f, min: v })} />
-          <NumberField id="th-ok" label={`Báo đủ khi từ (${m.unit})`} min={0} step="any" value={f.ok} onChange={v => setF({ ...f, ok: v })} error={err} />
+          <Field label="Mã" htmlFor="em-code">
+            <input id="em-code" className="field-input num uppercase" maxLength={20} value={f.code} onChange={e => setF({ ...f, code: e.target.value })} />
+          </Field>
+          <Field label="Loại" htmlFor="em-cat">
+            <select id="em-cat" className="field-input" value={f.category} onChange={e => setF({ ...f, category: e.target.value as MaterialCategory })}>
+              {CATS.map(([k, lb]) => <option key={k} value={k}>{lb}</option>)}
+            </select>
+          </Field>
+          <div className="col-span-2">
+            <Field label="Tên phụ liệu" htmlFor="em-name">
+              <input id="em-name" className="field-input" maxLength={120} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} />
+            </Field>
+          </div>
+          <Field label="Đơn vị tính" htmlFor="em-unit">
+            <input id="em-unit" className="field-input" maxLength={20} value={f.unit} onChange={e => setF({ ...f, unit: e.target.value })} />
+          </Field>
         </div>
-        <p className="text-xs text-muted-foreground">
-          Dưới <b className="text-bad">{nf(min)}</b>: hiện Sắp hết và gửi thông báo cần nhập. Từ <b className="text-warn">{nf(min)}</b> đến dưới <b className="text-ok">{nf(okv)}</b>: Gần hết. Nhập lên từ <b className="text-ok">{nf(okv)}</b>: Đủ và gửi thông báo đã đủ hàng.
-        </p>
         <DialogFooter>
           <Button variant="secondary" onClick={onClose}>Hủy</Button>
-          <Button onClick={save} disabled={busy || !!err}>Lưu ngưỡng</Button>
+          <Button onClick={save} disabled={busy}>Lưu</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -148,29 +156,25 @@ export default function MaterialsPage() {
       >
         <TableWrap>
           <table className="wl-table !min-w-[1000px]">
-            <thead><tr><th>Mã</th><th>Tên</th><th>Loại</th><th>ĐVT</th><th className="r">Tồn</th><th className="r">Giá BQ</th><th className="r">Giá trị tồn</th><th className="r">Báo hết dưới</th><th className="r">Báo đủ từ</th><th>Mức tồn</th><th>Tình trạng</th></tr></thead>
+            <thead><tr><th>Mã</th><th>Tên</th><th>Loại</th><th>ĐVT</th><th className="r">Tồn</th><th className="r">Giá BQ</th><th className="r">Giá trị tồn</th><th>Mức tồn</th><th>Tình trạng</th></tr></thead>
             <tbody>
               {list.map(m => {
                 const lv = stockLevel(m);
                 return (
                   <tr key={m.id} className={m.status === "discontinued" ? "opacity-60" : ""}>
-                    <td className="num font-bold text-brand">{m.code}</td>
+                    <td className="num font-bold whitespace-nowrap text-brand">
+                      {m.code}
+                      {manage && (
+                        <button type="button" aria-label={`Sửa ${m.code}`} onClick={() => setEditing(m)}
+                          className="ml-1 rounded p-1 align-middle text-subtle hover:bg-surface-3 hover:text-brand"><Pencil className="size-3.5" /></button>
+                      )}
+                    </td>
                     <td className="font-medium">{m.name}{(m.supplier || m.supplierCode) && <div className="text-[11.5px] font-normal text-subtle" title={m.note}>{[m.supplier, m.supplierCode].filter(Boolean).join(" · ")}</div>}</td>
                     <td className="text-brown">{MATERIAL_CATEGORIES[m.category]}</td>
                     <td>{m.unit}</td>
                     <td className={`r num font-semibold ${lv === "low" ? "text-bad" : ""}`}>{nf(m.stock, 1)}</td>
                     <td className="r num">{m.totalImportQty ? vnd(m.avgPrice) : "–"}</td>
                     <td className="r num">{vnd(m.stock * m.avgPrice)}</td>
-                    <td className="r num text-bad">{nf(m.minStock)}</td>
-                    <td className="r num text-ok">
-                      <span className="inline-flex items-center gap-1">
-                        {nf(okLevel(m))}
-                        {manage && (
-                          <button type="button" aria-label={`Sửa ngưỡng ${m.code}`} onClick={() => setEditing(m)}
-                            className="rounded p-1 text-subtle hover:bg-surface-3 hover:text-brand"><Pencil className="size-3.5" /></button>
-                        )}
-                      </span>
-                    </td>
                     <td>
                       {m.status === "discontinued" ? <span className="text-xs text-subtle">–</span>
                         : lv === "low" ? <StatusPill tone="bad" dot>Sắp hết</StatusPill>
@@ -224,7 +228,7 @@ export default function MaterialsPage() {
           </table>
         </TableWrap>
       </Panel>
-      {editing && <ThresholdDialog m={editing} onClose={() => setEditing(null)} />}
+      {editing && <EditMaterialDialog m={editing} onClose={() => setEditing(null)} />}
     </>
   );
 }

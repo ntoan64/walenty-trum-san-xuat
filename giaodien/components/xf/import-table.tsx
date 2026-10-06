@@ -12,6 +12,7 @@ import { nf, vnd } from "@/lib/format";
 import { Collapsible } from "./collapsible";
 import { useDraft } from "@/lib/use-draft";
 import { Summary } from "./confirm-provider";
+import { MaterialPicker } from "./material-picker";
 
 const NEW = "__new__";
 const CATS = Object.entries(MATERIAL_CATEGORIES) as [MaterialCategory, string][];
@@ -19,15 +20,11 @@ const CATS = Object.entries(MATERIAL_CATEGORIES) as [MaterialCategory, string][]
 interface Row {
   key: number;
   material: string; // id hoặc NEW
-  category: MaterialCategory; name: string; unit: string; min: string; ok: string;
+  category: MaterialCategory; name: string; unit: string;
   qty: string; price: string;
 }
 
-// Gợi ý ngưỡng báo hết / báo đủ theo loại (sửa được)
-const THRESHOLD: Record<MaterialCategory, [number, number]> = {
-  vai: [50, 200], nut: [500, 2000], chi: [10, 30], nhan: [300, 1000], khoa: [100, 400], khac: [50, 200],
-};
-const blank = (key: number, material = ""): Row => ({ key, material, category: "vai", name: "", unit: "mét", min: "50", ok: "200", qty: "", price: "" });
+const blank = (key: number, material = ""): Row => ({ key, material, category: "vai", name: "", unit: "mét", qty: "", price: "" });
 const cell = "field-input !min-h-9 !py-1.5";
 
 // Phiếu nhập kho dạng bảng: nhiều dòng, dòng nào chưa có phụ liệu thì khai báo mới ngay trên dòng (mã tự sinh)
@@ -36,7 +33,7 @@ export function ImportTable() {
   const act = useConfirmAction();
   const usable = s.materials.filter(m => m.status !== "discontinued");
   const [seq, setSeq] = useDraft("import:seq", 2);
-  const [rows, setRows] = useDraft<Row[]>("import:rows", () => [blank(1, usable[0]?.id ?? NEW)]);
+  const [rows, setRows] = useDraft<Row[]>("import:rows", () => [blank(1)]);
   const [supplier, setSupplier] = useDraft("import:supplier", "");
 
   const set = (key: number, patch: Partial<Row>) => setRows(rs => rs.map(r => (r.key === key ? { ...r, ...patch } : r)));
@@ -58,7 +55,7 @@ export function ImportTable() {
 
   const toLines = (): ImportLine[] => rows.map(r => ({
     materialId: r.material && r.material !== NEW ? r.material : undefined,
-    newMaterial: r.material === NEW ? { name: r.name, unit: r.unit, category: r.category, minStock: +r.min || 0, okStock: +r.ok || 0 } : undefined,
+    newMaterial: r.material === NEW ? { name: r.name, unit: r.unit, category: r.category, minStock: 0, okStock: 0 } : undefined,
     qty: +r.qty || 0,
     price: +r.price || 0,
   }));
@@ -82,7 +79,7 @@ export function ImportTable() {
       },
       "material.import", A.importBatch, { supplier, lines: toLines() },
     );
-    if (r?.ok) { setRows([blank(seq, usable[0]?.id ?? NEW)]); setSeq(seq + 1); }
+    if (r?.ok) { setRows([blank(seq)]); setSeq(seq + 1); }
   };
 
   return (
@@ -104,41 +101,19 @@ export function ImportTable() {
                 <span className="num hidden pt-2 text-subtle md:block">{i + 1}</span>
 
                 <div className="col-span-2 flex flex-col gap-1.5 md:col-span-1">
-                  <label htmlFor={`ir-m-${r.key}`} className="sr-only">Phụ liệu dòng {i + 1}</label>
-                  <select id={`ir-m-${r.key}`} className={cell} value={r.material} onChange={e => set(r.key, { material: e.target.value })}>
-                    <option value="" disabled>Chọn phụ liệu…</option>
-                    {CATS.map(([k, lb]) => {
-                      const list = usable.filter(x => x.category === k);
-                      return list.length ? (
-                        <optgroup key={k} label={lb}>
-                          {list.map(x => <option key={x.id} value={x.id}>{x.code} · {x.name}{x.status === "paused" ? " (tạm ngưng)" : ""}</option>)}
-                        </optgroup>
-                      ) : null;
-                    })}
-                    <option value={NEW}>＋ Phụ liệu mới…</option>
-                  </select>
+                  <MaterialPicker label={`Phụ liệu dòng ${i + 1}`} materials={usable} value={m}
+                    onPick={x => set(r.key, { material: x.id })}
+                    onNew={name => set(r.key, { material: NEW, name })} />
                   {r.material === NEW && (
                     <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-brand-soft/50 p-2">
                       <span className="num rounded bg-surface px-2 py-1 text-xs font-bold text-brand" title="Mã tự sinh theo loại">{codeOf(r)}</span>
                       <select aria-label="Loại" className={`${cell} !w-auto`} value={r.category}
-                        onChange={e => { const c = e.target.value as MaterialCategory; set(r.key, { category: c, unit: DEFAULT_UNIT[c], min: String(THRESHOLD[c][0]), ok: String(THRESHOLD[c][1]) }); }}>
+                        onChange={e => { const c = e.target.value as MaterialCategory; set(r.key, { category: c, unit: DEFAULT_UNIT[c] }); }}>
                         {CATS.map(([k, lb]) => <option key={k} value={k}>{lb}</option>)}
                       </select>
                       <input aria-label="Tên phụ liệu" placeholder="Tên phụ liệu, VD: Vải lụa đen" className={`${cell} !w-auto min-w-[160px] flex-1`}
                         value={r.name} onChange={e => set(r.key, { name: e.target.value })} />
                       <input aria-label="Đơn vị tính" list="units" className={`${cell} !w-20`} value={r.unit} onChange={e => set(r.key, { unit: e.target.value })} />
-                      <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5">
-                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <span className="size-2 rounded-full bg-bad" aria-hidden /> Báo hết khi dưới
-                          <input aria-label="Ngưỡng báo hết" type="number" min={0} step="any" className={`${cell} num !w-20`} value={r.min} onChange={e => set(r.key, { min: e.target.value })} />
-                          {r.unit}
-                        </label>
-                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <span className="size-2 rounded-full bg-ok" aria-hidden /> Báo đủ khi từ
-                          <input aria-label="Ngưỡng báo đủ" type="number" min={0} step="any" className={`${cell} num !w-20`} value={r.ok} onChange={e => set(r.key, { ok: e.target.value })} />
-                          {r.unit}
-                        </label>
-                      </div>
                     </div>
                   )}
                 </div>
