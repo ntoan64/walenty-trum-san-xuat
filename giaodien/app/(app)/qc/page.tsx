@@ -1,6 +1,6 @@
 "use client";
 
-import { History, PackageSearch, Wrench } from "lucide-react";
+import { History, PackageSearch, Scissors, Wrench } from "lucide-react";
 import { isRepairLate } from "@core";
 import { matches } from "@/lib/search";
 import { SearchBox } from "@/components/xf/search-box";
@@ -11,6 +11,7 @@ import { prodOf, wsName } from "@/lib/actions";
 import { lateRepairs, pendingBatches } from "@/lib/selectors";
 import { AlertRow, EmptyState, PageHeader, Panel, StatCard } from "@/components/xf/basics";
 import { RepairTable } from "@/components/xf/repair-table";
+import { CustomerRepairList, isLate } from "@/components/xf/customer-repair";
 
 export default function QCPage() {
   const { data: s } = useStore();
@@ -30,6 +31,10 @@ export default function QCPage() {
   const closed = s.repairs.filter(r => r.status === "closed" && repHit(r)).reverse();
   const late = lateRepairs(s, now).length;
 
+  // đồ khách sale gửi sửa (chưa trả sale), trễ hẹn lên đầu
+  const nowD = new Date();
+  const saleOpen = (s.customerRepairs ?? []).filter(r => r.status !== "done" && matches(q, r.code, r.orderCode, r.customerName, r.item, r.request))
+    .sort((a, b) => Number(isLate(b, nowD)) - Number(isLate(a, nowD)) || a.promisedAt.getTime() - b.promisedAt.getTime());
   return (
     <>
       <PageHeader
@@ -56,7 +61,11 @@ export default function QCPage() {
           </div>
         ) : <EmptyState>Không có hàng chờ QC. Khi xưởng trả hàng, đợt nhận sẽ hiện ở đây.</EmptyState>}
       </Panel>
-      <Panel title={`Phiếu trả sửa đang mở (${open.length})`} icon={Wrench} flush
+      <Panel title={`Đồ sửa từ Sale cửa hàng (${saleOpen.length})`} icon={Scissors} flush
+        hint={<>Đồ khách sale gửi về (riêng với hàng sản xuất): <i>Sale gửi yêu cầu → QC nhận hàng → Gửi xưởng → Xưởng trả · QC kiểm → Trả sale</i>.</>}>
+        <CustomerRepairList list={saleOpen} empty="Không có đồ khách nào sale gửi về đang chờ xử lý." />
+      </Panel>
+      <Panel title={`Phiếu trả sửa hàng sản xuất (${open.length})`} icon={Wrench} flush
         hint={<>Trạng thái: <i>Đã gửi xưởng → Xưởng đã nhận → Xưởng trả lại → QC lại</i>.</>}>
         <RepairTable list={open} empty="Không còn phiếu sửa nào đang mở." />
       </Panel>
