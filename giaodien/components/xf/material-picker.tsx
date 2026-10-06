@@ -6,7 +6,7 @@ import { MATERIAL_CATEGORIES, type Material } from "@core";
 import { matches } from "@/lib/search";
 import { nf } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { usePopoverPos } from "@/lib/use-popover-pos";
+import { Dropdown } from "./dropdown";
 
 const MAX = 30;
 
@@ -19,7 +19,6 @@ export function MaterialPicker({ materials, value, onPick, onNew, label }: {
   const [hi, setHi] = useState(0);
   const box = useRef<HTMLDivElement>(null);
   const listId = useId();
-  const pos = usePopoverPos(box, open);
   const found = materials.filter(m => matches(q, m.code, m.name, m.supplier, m.supplierCode, MATERIAL_CATEGORIES[m.category])).slice(0, MAX);
   const options = [...found.map(m => ({ m })), ...(q.trim() ? [{ m: undefined }] : [])];
   const pick = (i: number) => {
@@ -54,8 +53,7 @@ export function MaterialPicker({ materials, value, onPick, onNew, label }: {
           <span className="text-subtle"> · tồn {nf(value.stock, 1)} {value.unit}</span>
         </div>
       )}
-      {open && (q || !value) && (
-        <ul id={listId} role="listbox" style={pos} className="overflow-auto rounded-lg border border-line bg-surface p-1 shadow-lg">
+      <Dropdown anchor={box} open={open && (!!q || !value)} id={listId}>
           {options.map((o, i) => (
             <li key={o.m?.id ?? "new"} role="option" aria-selected={hi === i}>
               <button type="button" tabIndex={-1} onMouseEnter={() => setHi(i)} onMouseDown={e => e.preventDefault()} onClick={() => pick(i)}
@@ -75,8 +73,7 @@ export function MaterialPicker({ materials, value, onPick, onNew, label }: {
             </li>
           ))}
           {!options.length && <li className="px-2 py-1.5 text-[13px] text-muted-foreground">Gõ để tìm, hoặc gõ tên để tạo phụ liệu mới.</li>}
-        </ul>
-      )}
+        </Dropdown>
     </div>
   );
 }

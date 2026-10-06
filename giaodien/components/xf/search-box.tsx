@@ -5,7 +5,7 @@ import { Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { matches } from "@/lib/search";
 import { useStore } from "@/lib/store";
-import { usePopoverPos } from "@/lib/use-popover-pos";
+import { Dropdown } from "./dropdown";
 
 const MAX = 8;
 
@@ -19,7 +19,6 @@ export function SearchBox({ value, onChange, placeholder = "Tìm…", className,
   const [hi, setHi] = useState(-1);
   const box = useRef<HTMLDivElement>(null);
   const listId = useId();
-  const pos = usePopoverPos(box, open && !!value);
   const all = useMemo(() => options ?? [...new Set([
     ...s.products.map(p => p.name),
     ...s.products.map(p => p.category).filter((x): x is string => !!x),
@@ -54,8 +53,7 @@ export function SearchBox({ value, onChange, placeholder = "Tìm…", className,
           <X className="size-3.5" />
         </button>
       )}
-      {open && found.length > 0 && (
-        <ul id={listId} role="listbox" style={pos} className="overflow-auto rounded-lg border border-line bg-surface p-1 shadow-lg">
+      <Dropdown anchor={box} open={open && found.length > 0} id={listId}>
           {found.map((x, i) => (
             <li key={x} role="option" aria-selected={hi === i}>
               <button type="button" tabIndex={-1} onMouseEnter={() => setHi(i)} onMouseDown={e => e.preventDefault()} onClick={() => pick(x)}
@@ -64,8 +62,7 @@ export function SearchBox({ value, onChange, placeholder = "Tìm…", className,
               </button>
             </li>
           ))}
-        </ul>
-      )}
+        </Dropdown>
     </div>
   );
 }
