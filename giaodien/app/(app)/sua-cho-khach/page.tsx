@@ -84,7 +84,7 @@ function ReceiveFromCustomer() {
 function SendDialog({ r, onClose }: { r: CustomerRepair; onClose: () => void }) {
   const { data: s } = useStore();
   const act = useAskAction();
-  const list = s.workshops.filter(w => w.active);
+  const list = s.workshops.filter(w => w.active && w.kind !== "ncc");
   const [ws, setWs] = useState(list[0]?.id ?? "");
   const [busy, setBusy] = useState(false);
   const send = async () => {

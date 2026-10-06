@@ -746,7 +746,13 @@ export function issueMaterials(c: Ctx, orderIds: string[], materialIds?: string[
       c.s.materialTxns.push({ id: uid(c, "t"), material: r.material.id, type: "out", qty: r.qty, order: o.code, stockAfter: r.material.stock, avgAfter: r.material.avgPrice, by: c.me, at: tick(c) });
     }
     if (rest.length) { o.issuedAt ??= c.now; o.issuedBy ??= c.me; }
-    if (!remainingIssue(c.s, o).some(r => r.qty > 0)) o.pendingIssue = false;
+    if (!remainingIssue(c.s, o).some(r => r.qty > 0)) {
+      o.pendingIssue = false;
+      // xuất đủ: chốt lại giá vốn theo giá BQ lúc xuất (giữ công may đã chỉnh tay)
+      const b = costBreakdown(prodOf(c.s, o), c.s.materials, o.color);
+      o.unitCost = Math.round(b.total - b.labor + (o.labor ?? b.labor));
+      syncProductCost(c, o);
+    }
   }
   for (const id of total.keys()) checkLow(c, byId(c.s.materials, id)!);
   const name = orders[0].group ?? orders.map(o => o.code).join(", ");
