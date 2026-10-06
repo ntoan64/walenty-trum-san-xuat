@@ -1,6 +1,6 @@
 // Kiểu dữ liệu theo SPEC.md mục 5. Id là string để dùng chung cho dữ liệu mẫu và MongoDB.
 
-export type Role = 'quanly' | 'kho' | 'qc'
+export type Role = 'quanly' | 'kho' | 'qc' | 'sale'
 
 export interface User {
   id: string

@@ -1,7 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   ChevronDown,
   ChartColumn, ClipboardList, History, Factory, Layers, LayoutDashboard, LogOut, PackageCheck, Scissors, Send, ShieldCheck, Shirt, Users,
@@ -130,12 +131,16 @@ function Sidebar() {
 function Guarded({ children }: { children: React.ReactNode }) {
   const { role } = useStore();
   const path = usePathname();
-  if (!canView(role, screenOf(path))) {
+  const router = useRouter();
+  const home = NAV.find(n => canView(role, n.screen))?.href ?? "/tai-khoan";
+  const blocked = !canView(role, screenOf(path));
+  useEffect(() => { if (blocked && path === "/") router.replace(home); }, [blocked, path, home, router]);
+  if (blocked) {
     return (
       <Panel title="Không có quyền xem">
         <EmptyState>
           Vai trò {ROLE_LABEL[role]} không xem được trang này.{" "}
-          <Link href="/" className="font-semibold text-brand hover:underline">Về Tổng quan</Link>
+          <Link href={home} className="font-semibold text-brand hover:underline">Về trang của bạn</Link>
         </EmptyState>
       </Panel>
     );

@@ -97,6 +97,7 @@ function RepairCard({ r, now, onSend, onNote }: { r: CustomerRepair; now: Date; 
   const st = stepOf(r.status);
   const ws = r.workshop ? byId(s.workshops, r.workshop)?.name : undefined;
   const allowed = can("customer.repair");
+  const qcOk = can("customer.qc"); // sale chỉ tạo yêu cầu + xác nhận hoàn thành
   return (
     <article className={cn("card flex flex-col gap-2.5 rounded-xl p-4", late && "border-bad")}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -135,20 +136,20 @@ function RepairCard({ r, now, onSend, onNote }: { r: CustomerRepair; now: Date; 
       {allowed && r.status !== "done" && (
         <div className="flex flex-wrap justify-end gap-1.5">
           <Button size="sm" variant="secondary" onClick={onNote}><MessageSquarePlus /> Ghi chú</Button>
-          {r.status === "requested" && (
+          {qcOk && r.status === "requested" && (
             <Button size="sm" onClick={() => act(
               { title: `QC nhận ${r.code} từ sale?`, confirmLabel: "Đã nhận hàng", description: <Summary rows={[["Mã ĐH Sapo", r.orderCode ?? "—"], ["Sản phẩm", r.item], ["Khách muốn sửa", r.request]]} /> },
               "customer.repair", A.receiveCustomerRepair, r.id,
             )}>Đã nhận hàng</Button>
           )}
-          {r.status === "received" && <Button size="sm" onClick={onSend}>Gửi xưởng</Button>}
-          {r.status === "sent" && (
+          {qcOk && r.status === "received" && <Button size="sm" onClick={onSend}>Gửi xưởng</Button>}
+          {qcOk && r.status === "sent" && (
             <Button size="sm" onClick={() => act(
               { title: `${ws ?? "Xưởng"} đã trả ${r.code}, QC kiểm tra đạt?`, confirmLabel: "Đã nhận về, kiểm tra xong", description: <Summary rows={[["Sản phẩm", r.item], ["Khách muốn sửa", r.request]]} /> },
               "customer.repair", A.customerRepairBack, r.id,
             )}>Xưởng trả về · QC kiểm tra</Button>
           )}
-          {r.status === "returned" && (
+          {qcOk && r.status === "returned" && (
             <Button size="sm" onClick={() => act(
               { title: `Trả ${r.code} cho sale?`, confirmLabel: "Trả sale", description: <Summary rows={[["Khách", `${r.customerName} · ${r.customerPhone}`], ["Sản phẩm", r.item]]} /> },
               "customer.repair", A.customerRepairDone, r.id,

@@ -16,7 +16,7 @@ async function handle(req: Request) {
   if (pwErr) return bad(pwErr);
   const result = await runAction(me, "createAccount", [{
     name: String(b?.name ?? ""), username: String(b?.username ?? ""), phone: String(b?.phone ?? ""),
-    role: ["quanly", "kho", "qc"].includes(b?.role) ? b.role : "qc", title: String(b?.title ?? ""),
+    role: ["quanly", "kho", "qc", "sale"].includes(b?.role) ? b.role : "qc", title: String(b?.title ?? ""),
     passwordHash: await hashPassword(String(b.password)),
   }]);
   const { state, version } = await loadState();

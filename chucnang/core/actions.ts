@@ -1106,7 +1106,7 @@ export function sendReminders(c: Ctx): Result {
   for (const it of items) notify(c, it.roles, it.text);
   return ok(`Đã gửi nhắc việc (${items.map(i => i.roles.map(r => ROLE_NAME[r]).join("")).join(", ")})`);
 }
-const ROLE_NAME: Record<Role, string> = { quanly: "Quản lý kho", kho: "Phó kho", qc: "QC" };
+const ROLE_NAME: Record<Role, string> = { quanly: "Quản lý kho", kho: "Phó kho", qc: "QC", sale: "Sale cửa hàng" };
 
 /* ---------- báo cáo, nhân viên ---------- */
 export function sendReport(c: Ctx, text: string): Result {
@@ -1122,7 +1122,7 @@ export function createAccount(c: Ctx, a: { name: string; username: string; phone
   const name = a.name.trim(), username = a.username.trim().toLowerCase(), phone = a.phone.trim();
   if (!name) return fail("Nhập tên nhân viên");
   if (name.length > 60 || tooLong(a.title, 40)) return fail("Tên hoặc chức danh quá dài");
-  if (!["quanly", "kho", "qc"].includes(a.role)) return fail("Quyền không hợp lệ");
+  if (!["quanly", "kho", "qc", "sale"].includes(a.role)) return fail("Quyền không hợp lệ");
   if (!USERNAME_RE.test(username)) return fail("Tên đăng nhập 3–30 ký tự: chữ thường, số, dấu . _ -");
   if (c.s.users.some(u => u.username === username)) return fail(`Tên đăng nhập ${username} đã có`);
   if (phone && !/^[0-9 +]{9,15}$/.test(phone)) return fail("Số điện thoại không hợp lệ");
@@ -1176,10 +1176,10 @@ export const ACTIONS: Record<string, [Action | null, (c: Ctx, ...args: any[]) =>
   updateWorkshop: ["workshop.manage", updateWorkshop, "Sửa thông tin xưởng"],
   toggleWorkshop: ["workshop.manage", toggleWorkshop, "Ngừng / hợp tác lại xưởng"],
   createCustomerRepair: ["customer.repair", createCustomerRepair, "Sale gửi yêu cầu sửa đồ khách"],
-  receiveCustomerRepair: ["customer.repair", receiveCustomerRepair, "QC nhận đồ khách từ sale"],
-  sendCustomerRepair: ["customer.repair", sendCustomerRepair, "Gửi đồ khách cho xưởng"],
-  customerRepairBack: ["customer.repair", customerRepairBack, "Xưởng trả đồ khách, QC kiểm tra"],
-  customerRepairDone: ["customer.repair", customerRepairDone, "QC trả đồ khách cho sale"],
+  receiveCustomerRepair: ["customer.qc", receiveCustomerRepair, "QC nhận đồ khách từ sale"],
+  sendCustomerRepair: ["customer.qc", sendCustomerRepair, "Gửi đồ khách cho xưởng"],
+  customerRepairBack: ["customer.qc", customerRepairBack, "Xưởng trả đồ khách, QC kiểm tra"],
+  customerRepairDone: ["customer.qc", customerRepairDone, "QC trả đồ khách cho sale"],
   storeConfirmCustomerRepair: ["customer.repair", storeConfirmCustomerRepair, "Cửa hàng kiểm tra, xác nhận nhập SON"],
   noteCustomerRepair: ["customer.repair", noteCustomerRepair, "Ghi chú đồ khách"],
   createProduct: ["product.manage", createProduct, "Thêm sản phẩm"],
