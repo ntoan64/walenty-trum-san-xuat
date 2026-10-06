@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  ChartColumn, ChartLine, ClipboardList, History, Factory, Layers, LayoutDashboard, LogOut, PackageCheck, Scissors, Send, ShieldCheck, Shirt, Users,
+  ChartColumn, ClipboardList, History, Factory, Layers, LayoutDashboard, LogOut, PackageCheck, Scissors, Send, ShieldCheck, Shirt, Users,
   type LucideIcon,
 } from "lucide-react";
 import { canView, ROLE_LABEL, type Screen } from "@core";
@@ -27,7 +27,6 @@ export const NAV: { href: string; screen: Screen; label: string; icon: LucideIco
   { href: "/sua-cho-khach", screen: "customer", label: "Đồ khách gửi sửa", icon: Scissors },
   { href: "/xuong", screen: "workshops", label: "Xưởng may & NCC", icon: Factory },
   { href: "/bao-cao", screen: "reports", label: "Báo cáo", icon: ChartColumn },
-  { href: "/thong-ke", screen: "stats", label: "Thống kê nhập kho", icon: ChartLine },
   { href: "/lich-su", screen: "history", label: "Lịch sử thao tác", icon: History },
   { href: "/nhan-vien", screen: "users", label: "Nhân viên", icon: Users },
 ];

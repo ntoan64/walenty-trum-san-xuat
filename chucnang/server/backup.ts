@@ -25,7 +25,7 @@ export function parseBackup(gz: Buffer) {
 }
 
 const auth = (c: NonNullable<ReturnType<typeof cloudConfig>>) => "Basic " + Buffer.from(`${c.apiKey}:${c.secret}`).toString("base64");
-const vnStamp = (d: Date) => new Date(d.getTime() + 7 * 3600e3).toISOString().slice(0, 16).replace(/[-:]/g, "").replace("T", "-");
+const vnStamp = (d: Date) => new Date(d.getTime() + 7 * 3600e3).toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-");
 
 export async function createBackup(reason: string) {
   const c = cloudConfig();
