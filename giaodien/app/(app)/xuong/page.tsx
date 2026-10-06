@@ -124,7 +124,7 @@ export default function WorkshopsPage() {
     <>
       <PageHeader
         eyebrow={<>Phân hệ sản xuất <span className="text-subtle">/</span> <span className="text-subtle">Xưởng gia công</span></>}
-        title="Xưởng may"
+        title="Xưởng may & NCC"
         desc="Xưởng nào đang giữ hàng lỗi của mình mang về sửa, lỗi gì, giữ bao lâu."
         aside={
           <div className="grid w-full grid-cols-3 gap-2 min-[1500px]:w-auto">

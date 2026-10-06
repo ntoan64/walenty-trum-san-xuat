@@ -27,7 +27,20 @@ const sizesOf = (p: Product | undefined, color?: string) => {
   return list.length ? list : DEFAULT_SIZES;
 };
 
-type Line = { key: number; product: string; color: string; sizes: { size: string; qty: string }[] };
+type Line = { key: number; product: string; color: string; sizes: { size: string; qty: string }[]; quick?: string };
+
+// Nhập nhanh số lượng: "1s1m1l1xl", "2S 3M 1XL", "1 custom", "XXL:2" → [{size, qty}]
+function parseQuick(text: string) {
+  const out: { size: string; qty: number }[] = [];
+  const t = text.replace(/,/g, " ");
+  const re = /(\d+)\s*([A-Za-zÀ-ỹ]+)|([A-Za-zÀ-ỹ][A-Za-zÀ-ỹ0-9]*)\s*[:=x×]\s*(\d+)/gi;
+  for (let m; (m = re.exec(t)); ) {
+    const size = (m[2] ?? m[3]).toUpperCase(), qty = +(m[1] ?? m[4]);
+    const i = out.findIndex(x => x.size === size);
+    if (i >= 0) out[i].qty += qty; else out.push({ size, qty });
+  }
+  return out;
+}
 
 // 1 lệnh = 1 xưởng, nhiều sản phẩm. Tạo lệnh không trừ kho; kho bấm "Xuất phụ liệu" ở trang lệnh mới trừ.
 function CreateOrder() {
@@ -133,12 +146,29 @@ function CreateOrder() {
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-2">
                   {l.sizes.map((x, j) => (
                     <label key={x.size} className="flex flex-col gap-1 rounded-lg bg-surface p-2">
-                      <span className="text-xs font-bold text-brand">{x.size}</span>
+                      <span className="flex items-center justify-between text-xs font-bold text-brand">{x.size}
+                        {!sizesOf(p0, color).includes(x.size) && <button type="button" aria-label={`Bỏ size ${x.size}`} className="text-subtle hover:text-bad" onClick={() => set(l.key, { sizes: l.sizes.filter((_, k) => k !== j) })}>×</button>}
+                      </span>
                       <input type="number" min={0} step={1} inputMode="numeric" placeholder="0" aria-label={`Số lượng ${p0?.name} size ${x.size}`}
                         className="field-input num !min-h-8 !py-1" value={x.qty}
                         onChange={e => set(l.key, { sizes: l.sizes.map((y, k) => (k === j ? { ...y, qty: e.target.value } : y)) })} />
                     </label>
                   ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input aria-label={`Nhập nhanh size dòng ${i + 1}`} placeholder="Nhập nhanh: 1s1m1l1xl, 2 custom, XXL:3…" className="field-input !min-h-8 !w-auto min-w-[220px] flex-1 !py-1 text-[13px]"
+                    value={l.quick ?? ""} onChange={e => set(l.key, { quick: e.target.value })}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); (e.currentTarget.nextElementSibling as HTMLButtonElement | null)?.click(); } }} />
+                  <Button type="button" size="sm" variant="secondary" onClick={() => {
+                    const q = parseQuick(l.quick ?? "");
+                    if (!q.length) return;
+                    const sizes = [...l.sizes];
+                    for (const x of q) {
+                      const j = sizes.findIndex(y => y.size.toUpperCase() === x.size);
+                      if (j >= 0) sizes[j] = { ...sizes[j], qty: String(x.qty) }; else sizes.push({ size: x.size, qty: String(x.qty) });
+                    }
+                    set(l.key, { sizes, quick: "" });
+                  }}>Điền</Button>
                 </div>
                 {noBom && <p className="text-[12px] text-bad">Chưa có định mức phụ liệu{color ? ` cho màu ${color}` : ""}. Khai báo ở trang Sản phẩm & định mức trước.</p>}
               </div>
