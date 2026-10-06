@@ -410,6 +410,31 @@ export function setCostRatio(c: Ctx, productId: string, a: { ratio: number; colo
   return ok(`${p.name}${key ? ` (${key})` : ""}: tỉ lệ cost mục tiêu ${Math.round(a.ratio * 1000) / 10}%`);
 }
 
+// Sửa công may trong giá vốn dự trù (vd xưởng đổi giá); color: màu đang xem
+export function setCostLabor(c: Ctx, productId: string, a: { labor: number; color?: string; workshopId: string; sewType?: string }): Result {
+  const p = byId(c.s.products, productId);
+  if (!p) return fail("Không tìm thấy sản phẩm");
+  if (!(a.labor >= 0) || a.labor > LIMITS.labor) return fail("Công may không hợp lệ");
+  const w = byId(c.s.workshops, a.workshopId);
+  if (!w) return fail("Chọn xưởng may");
+  const key = a.color && p.costing?.[a.color] ? a.color : "";
+  const cur = p.costing?.[key] ?? { labor: p.laborCost };
+  p.costing = { ...(p.costing ?? {}), [key]: { ...cur, labor: a.labor, workshop: w.id, workshopName: w.name, sewType: a.sewType?.trim().slice(0, LIMITS.name) || undefined } };
+  if (!key) p.laborCost = a.labor;
+  return ok(`${p.name}${key ? ` (${key})` : ""}: công may ${vnd(a.labor)} tại ${w.name}`);
+}
+
+// Sửa bảng giá gia công của xưởng
+export function setWorkshopRates(c: Ctx, id: string, rates: WorkshopRate[]): Result {
+  const w = byId(c.s.workshops, id);
+  if (!w) return fail("Không tìm thấy xưởng");
+  const list = (rates ?? []).map(r => ({ item: String(r.item ?? "").trim().slice(0, LIMITS.name), ...(r.price != null && r.price >= 0 ? { price: r.price } : {}), ...(r.minQty ? { minQty: r.minQty } : {}), ...(r.invoice ? { invoice: true } : {}), ...(r.note?.trim() ? { note: r.note.trim().slice(0, 200) } : {}) })).filter(r => r.item);
+  if (list.length > 200) return fail("Tối đa 200 dòng giá");
+  if (list.some(r => r.price != null && r.price > LIMITS.labor)) return fail("Giá gia công quá lớn");
+  w.rates = list;
+  return ok(`${w.name}: đã lưu bảng giá gia công (${list.length} dòng)`);
+}
+
 export function setProductBom(c: Ctx, id: string, a: { laborCost: number; bom: BomLine[]; color?: string }): Result {
   const p = byId(c.s.products, id);
   if (!p) return fail("Không tìm thấy sản phẩm");
@@ -1130,6 +1155,8 @@ export const ACTIONS: Record<string, [Action | null, (c: Ctx, ...args: any[]) =>
   issueMaterials: ["order.create", issueMaterials, "Xuất phụ liệu cho lệnh"],
   setCostRatio: ["product.manage", setCostRatio, "Sửa tỉ lệ cost mục tiêu"],
   repairReturn: ["repair.status", repairReturn, "Nhận hàng sửa xưởng trả theo size"],
+  setCostLabor: ["product.manage", setCostLabor, "Sửa công may"],
+  setWorkshopRates: ["workshop.manage", setWorkshopRates, "Sửa bảng giá gia công"],
   setProductBom: ["product.manage", setProductBom, "Sửa định mức sản phẩm"],
   createOrder: ["order.create", createOrder, "Tạo lệnh sản xuất"],
   confirmCut: ["order.cut", confirmCut, "Xưởng đã nhận nguyên phụ liệu"],

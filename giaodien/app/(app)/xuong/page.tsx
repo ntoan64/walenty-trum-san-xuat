@@ -91,9 +91,44 @@ function EditWorkshop({ w, onClose }: { w: Workshop; onClose: () => void }) {
   );
 }
 
+/* ---------- Sửa bảng giá gia công của xưởng ---------- */
+function RatesDialog({ w, onClose }: { w: Workshop; onClose: () => void }) {
+  const act = useAskAction();
+  const [rows, setRows] = useState((w.rates ?? []).map((r, i) => ({ key: i, item: r.item, price: r.price != null ? String(r.price) : "", note: r.note ?? "" })));
+  const [seq, setSeq] = useState(rows.length + 1);
+  const set = (key: number, p: Partial<(typeof rows)[number]>) => setRows(rows.map(r => (r.key === key ? { ...r, ...p } : r)));
+  const save = async () => {
+    const r = await act("workshop.manage", A.setWorkshopRates, w.id, rows.filter(x => x.item.trim()).map(x => ({ item: x.item, ...(x.price !== "" ? { price: +x.price || 0 } : {}), ...(x.note.trim() ? { note: x.note } : {}) })));
+    if (r.ok) onClose();
+  };
+  return (
+    <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader><DialogTitle className="font-serif text-lg text-brand">Bảng giá gia công · {w.name}</DialogTitle></DialogHeader>
+        <div className="flex max-h-[60vh] flex-col gap-1.5 overflow-y-auto pr-1">
+          {rows.map(r => (
+            <div key={r.key} className="grid grid-cols-[minmax(0,1fr)_120px_minmax(0,0.8fr)_32px] items-center gap-1.5">
+              <input aria-label="Loại may" placeholder="VD: Vest nữ theo size" className="field-input !min-h-9 !py-1.5" value={r.item} onChange={e => set(r.key, { item: e.target.value })} />
+              <input aria-label="Giá" type="number" min={0} step="any" placeholder="Giá" className="field-input num !min-h-9 !py-1.5" value={r.price} onChange={e => set(r.key, { price: e.target.value })} />
+              <input aria-label="Ghi chú" placeholder="Ghi chú" className="field-input !min-h-9 !py-1.5" value={r.note} onChange={e => set(r.key, { note: e.target.value })} />
+              <button type="button" aria-label="Xóa dòng" onClick={() => setRows(rows.filter(x => x.key !== r.key))} className="rounded-md p-1.5 text-subtle hover:bg-bad-soft hover:text-bad">×</button>
+            </div>
+          ))}
+          <div><Button type="button" size="sm" variant="secondary" onClick={() => { setRows([...rows, { key: seq, item: "", price: "", note: "" }]); setSeq(seq + 1); }}><Plus /> Thêm dòng giá</Button></div>
+        </div>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose}>Hủy</Button>
+          <Button onClick={save}>Lưu bảng giá</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function WorkshopsPage() {
   const { data: s, can } = useStore();
   // phụ liệu đang nằm ở từng xưởng (đã xuất cho lệnh chưa xong)
+  const [ratesFor, setRatesFor] = useState<Workshop | null>(null);
   const heldMat = heldByWorkshop(s);
   const confirmAct = useConfirmAction();
   const [editing, setEditing] = useState<Workshop | null>(null);
@@ -186,7 +221,7 @@ export default function WorkshopsPage() {
               ))}
             </div>
           )}
-          {(w.address || w.note || !!w.rates?.length) && (
+          {(w.address || w.note || !!w.rates?.length || manage) && (
             <div className="flex flex-col gap-1.5 border-b border-line px-4 py-2.5 text-[12.5px] md:px-5">
               {(w.address || w.note) && (
                 <p className="text-muted-foreground">
@@ -194,6 +229,7 @@ export default function WorkshopsPage() {
                   {w.address && w.note && " · "}{w.note}
                 </p>
               )}
+              {manage && <div><button type="button" onClick={() => setRatesFor(w)} className="text-[12.5px] font-semibold text-brand hover:underline">✏️ {w.rates?.length ? "Sửa bảng giá gia công" : "Thêm bảng giá gia công"}</button></div>}
               {!!w.rates?.length && (
                 <details className="group">
                   <summary className="cursor-pointer font-semibold text-brand select-none">Bảng giá gia công ({w.rates.length})</summary>
@@ -266,6 +302,7 @@ export default function WorkshopsPage() {
         </Panel>
       ))}
       {editing && <EditWorkshop w={editing} onClose={() => setEditing(null)} />}
+      {ratesFor && <RatesDialog w={ratesFor} onClose={() => setRatesFor(null)} />}
     </>
   );
 }

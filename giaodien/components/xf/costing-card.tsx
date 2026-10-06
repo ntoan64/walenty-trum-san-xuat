@@ -8,6 +8,7 @@ import { useAskAction } from "@/lib/use-action";
 import { nf, pct, vnd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { BomDialog } from "./bom-dialog";
+import { SearchPicker } from "./search-picker";
 
 function Row({ label, sub, value, strong }: { label: React.ReactNode; sub?: React.ReactNode; value: number; strong?: boolean }) {
   return (
@@ -15,6 +16,45 @@ function Row({ label, sub, value, strong }: { label: React.ReactNode; sub?: Reac
       <td className="px-3 py-1.5">{label}{sub && <div className="text-[11px] text-subtle">{sub}</div>}</td>
       <td className={cn("num px-3 py-1.5 text-right whitespace-nowrap", strong && "font-semibold")}>{vnd(value)}</td>
     </tr>
+  );
+}
+
+// Công may: chọn xưởng → chọn loại may trong bảng giá gia công của xưởng (tự điền giá, sửa được)
+function LaborEdit({ productId, color, labor, workshopId, sewType, editable }: { productId: string; color?: string; labor: number; workshopId?: string; sewType?: string; editable: boolean }) {
+  const { data: s } = useStore();
+  const act = useAskAction();
+  const [ws, setWs] = useState(workshopId ?? "");
+  const [item, setItem] = useState(sewType ?? "");
+  const [v, setV] = useState(String(labor || ""));
+  const w = s.workshops.find(x => x.id === ws);
+  const changed = ws !== (workshopId ?? "") || item !== (sewType ?? "") || (+v || 0) !== labor;
+  if (!editable) return null;
+  return (
+    <div className="rounded-lg bg-surface-low p-3">
+      <div className="eyebrow mb-1">Công may</div>
+      <div className="flex flex-col gap-1.5">
+        <SearchPicker label="Xưởng may" placeholder="Chọn xưởng may…" value={ws}
+          items={s.workshops.filter(x => x.active).map(x => ({ id: x.id, label: x.name, sub: x.area, search: [x.contactName, ...(x.aliases ?? [])] }))}
+          onPick={id => { setWs(id); setItem(""); }} />
+        {!!w?.rates?.length && (
+          <select aria-label="Loại may" className="field-input !min-h-9 !py-1.5 text-[13px]" value={item} onChange={e => {
+            setItem(e.target.value);
+            const r = w.rates!.find(x => x.item === e.target.value);
+            if (r?.price != null) setV(String(r.price));
+          }}>
+            <option value="">— Chọn loại may trong bảng giá —</option>
+            {w.rates.map(r => <option key={r.item} value={r.item}>{r.item}{r.price != null ? ` · ${vnd(r.price)}` : r.note ? ` · ${r.note}` : ""}</option>)}
+          </select>
+        )}
+        <div className="flex items-center gap-2">
+          <input aria-label="Công may (đ/cái)" type="number" min={0} step="any" className="field-input num !min-h-9 !w-36 !py-1.5" value={v} onChange={e => setV(e.target.value)} />
+          <span className="text-muted-foreground">đ/cái</span>
+          <button type="button" disabled={!changed || !ws} onClick={() => act("product.manage", A.setCostLabor, productId, { labor: +v || 0, color, workshopId: ws, sewType: item })}
+            className={cn("rounded-md px-2.5 py-1 text-xs font-semibold", changed && ws ? "bg-brand text-brand-fg hover:bg-brand-strong" : "text-subtle")}>{changed ? "Lưu" : "✓"}</button>
+        </div>
+        {!ws && <p className="text-[11.5px] text-warn">Chọn xưởng may trước.</p>}
+      </div>
+    </div>
   );
 }
 
@@ -69,7 +109,7 @@ export function CostingCard({ p }: { p: Product }) {
   return (
     <div className="reveal min-w-0 rounded-xl border border-line bg-surface shadow-[0_4px_16px_rgba(31,27,26,0.05)]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
-        <h3 className="flex items-center gap-1.5 font-serif text-[15px] font-semibold text-brand"><Calculator className="size-4" /> Tính giá</h3>
+        <h3 className="flex items-center gap-1.5 font-serif text-[15px] font-semibold text-brand"><Calculator className="size-4" /> Giá vốn dự trù</h3>
         <div className="flex flex-wrap items-center gap-1">
           {keys.length > 1 && keys.map(x => (
             <button key={x || "_"} type="button" aria-pressed={k === x} onClick={() => setK(x)}
@@ -99,7 +139,7 @@ export function CostingCard({ p }: { p: Product }) {
                   {c?.fabric && <Row label={<>Vải chính <span className="text-muted-foreground">· {c.fabric.name ?? "—"}</span></>} sub={`${nf(c.fabric.qty, 2)} m × ${vnd(c.fabric.price)} (theo file tính giá)`} value={c.fabric.qty * c.fabric.price} />}
                   {c?.lining && <Row label={<>Vải lót <span className="text-muted-foreground">· {c.lining.name ?? "—"}</span></>} sub={`${nf(c.lining.qty, 2)} m × ${vnd(c.lining.price)}`} value={c.lining.qty * c.lining.price} />}
                 </>}
-                <Row label="Công may" sub={[ws?.name ?? c?.workshopName, c?.sewType].filter(Boolean).join(" · ") || undefined} value={b.labor} />
+                <Row label={<>Công may <span className="text-muted-foreground">· may tại <b className="text-fg">{ws?.name ?? c?.workshopName ?? "chưa chọn xưởng"}</b></span></>} sub={c?.sewType} value={b.labor} />
                 {accRows.filter(([, v]) => v).map(([l, v]) => <Row key={l} label={l} value={v!} />)}
                 <tr className="border-t border-line bg-surface-low font-semibold">
                   <td className="px-3 py-2 font-serif text-brand">Giá vốn / cái</td>
@@ -133,6 +173,7 @@ export function CostingCard({ p }: { p: Product }) {
                 <div className="text-[11.5px] text-subtle">giá vốn ÷ (giá bán ÷ 1,08)</div>
               </div>
             ) : null}
+            <LaborEdit key={`lab-${p.id}-${k}-${b.labor}-${c?.workshop ?? ""}`} productId={p.id} color={color} labor={b.labor} workshopId={c?.workshop} sewType={c?.sewType} editable={can("product.manage")} />
             <TargetRatio key={`${p.id}-${k}-${target ?? ""}`} productId={p.id} color={color} target={target} editable={can("product.manage")} />
             {(c?.rating || c?.updated) && <p className="text-[12px] text-muted-foreground">{c.rating && <>Đánh giá: <b className="text-fg">{c.rating}</b></>}{c.updated && <> · cập nhật {c.updated.split("-").reverse().join("/")}</>}</p>}
           </div>

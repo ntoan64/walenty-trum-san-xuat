@@ -3,11 +3,10 @@
 import { Fragment, useState } from "react";
 import { ChevronRight, Info, Pencil, Plus, Shirt, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { byId, costBreakdown, costOf, displayColor, hasBom, isLive, materialCost, priceRange, PRODUCT_STATUS, sum, type BomLine, type ItemStatus, type Product, type ProductVariant } from "@core";
+import { byId, costBreakdown, costOf, displayColor, isLive, materialCost, priceRange, PRODUCT_STATUS, sum, type BomLine, type ItemStatus, type Product, type ProductVariant } from "@core";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { VariantsEditor } from "@/components/xf/variants-editor";
 import { SapoSheetPanel } from "@/components/xf/sapo-sheet";
-import { BomDialog } from "@/components/xf/bom-dialog";
 import { fmtRange, ProductThumb, SapoVariants } from "@/components/xf/sapo-product";
 import { CostingCard } from "@/components/xf/costing-card";
 import { Button } from "@/components/ui/button";
@@ -138,66 +137,17 @@ function VariantsDialog({ p, onClose }: { p: Product; onClose: () => void }) {
   );
 }
 
-function ProductDetail({ p, mat, stock }: { p: Product; mat: number; stock: number }) {
+function ProductDetail({ p, stock }: { p: Product; stock: number }) {
   const { data: s, can } = useStore();
   const [editVariants, setEditVariants] = useState(false);
-  const [editBom, setEditBom] = useState(false);
-  const total = mat + p.laborCost;
-  const matPct = total ? (mat / total) * 100 : 0;
+  const total = costOf(p, s.materials);
   const orders = s.orders.filter(o => o.product === p.id).slice().sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   const live = orders.filter(isLive);
   const STEP: Record<string, string> = { cut: "Chờ cắt", sew: "Đang may", qc: "QC", done: "Hoàn thành" };
   return (
-    <div className="reveal grid grid-cols-1 gap-4 rounded-xl border border-line bg-surface p-4 shadow-[0_4px_16px_rgba(31,27,26,0.05)] lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-      {/* Định mức */}
-      <div className="min-w-0">
-        <div className="mb-2 flex items-baseline justify-between gap-2">
-          <h3 className="font-serif text-[15px] font-semibold text-brand">Định mức cho 1 sản phẩm</h3>
-          <span className="flex items-center gap-2 text-xs text-muted-foreground">
-            {p.bom.length ? `${p.bom.length} phụ liệu` : hasBom(p) ? <span>Định mức riêng theo màu: {Object.keys(p.bomByColor ?? {}).join(", ")} (xem Tính giá)</span> : <span className="text-warn">Chưa có định mức, chưa tạo lệnh được</span>}
-            {can("product.manage") && (
-              <button type="button" onClick={() => setEditBom(true)} className="inline-flex items-center gap-1 font-semibold text-brand hover:underline">
-                <Pencil className="size-3.5" /> {p.bom.length ? "Sửa" : "Khai báo"}
-              </button>
-            )}
-          </span>
-        </div>
-        <div className="overflow-hidden rounded-lg border border-line">
-          <table className="w-full text-[13px]">
-            <thead className="bg-surface-low text-left text-[11px] tracking-[0.06em] text-muted-foreground uppercase">
-              <tr><th className="px-3 py-2">Phụ liệu</th><th className="px-3 py-2 text-right">Định mức</th><th className="px-3 py-2 text-right">Giá BQ</th><th className="px-3 py-2 text-right">Thành tiền</th></tr>
-            </thead>
-            <tbody>
-              {p.bom.map(l => {
-                const m = byId(s.materials, l.material)!;
-                return (
-                  <tr key={l.material} className="border-t border-line">
-                    <td className="px-3 py-2">
-                      <span className="num mr-1.5 text-xs font-bold text-brown">{m.code}</span>{m.name}
-                      {m.status !== "active" && <span className="ml-1 text-xs text-warn">({m.status === "paused" ? "tạm ngưng" : "ngừng dùng"})</span>}
-                      <div className="text-[11.5px] text-subtle">Tồn kho {nf(m.stock, 1)} {m.unit} · đủ làm ~{l.qtyPerUnit ? nf(Math.floor(m.stock / l.qtyPerUnit)) : "—"} cái</div>
-                    </td>
-                    <td className="num px-3 py-2 text-right whitespace-nowrap">{nf(l.qtyPerUnit, 2)} {m.unit}</td>
-                    <td className="num px-3 py-2 text-right text-muted-foreground">{vnd(m.avgPrice)}</td>
-                    <td className="num px-3 py-2 text-right">{vnd(l.qtyPerUnit * m.avgPrice)}</td>
-                  </tr>
-                );
-              })}
-              <tr className="border-t border-line">
-                <td className="px-3 py-2">Tiền công may</td><td className="px-3 py-2 text-right text-muted-foreground">gia công</td><td />
-                <td className="num px-3 py-2 text-right">{vnd(p.laborCost)}</td>
-              </tr>
-              <tr className="border-t border-line bg-surface-low font-semibold">
-                <td colSpan={3} className="px-3 py-2 font-serif text-brand">Giá vốn / cái</td>
-                <td className="num px-3 py-2 text-right text-brand">{vnd(total)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
+    <div className="reveal rounded-xl border border-line bg-surface p-4 shadow-[0_4px_16px_rgba(31,27,26,0.05)]">
       {/* Tóm tắt */}
-      <div className="flex min-w-0 flex-col gap-3">
+      <div className="grid min-w-0 grid-cols-1 gap-3 lg:grid-cols-3">
         <div className="rounded-lg bg-surface-low p-3">
           <div className="mb-1.5 flex items-center justify-between gap-2">
             <span className="eyebrow">Size & SKU</span>
@@ -217,18 +167,6 @@ function ProductDetail({ p, mat, stock }: { p: Product; mat: number; stock: numb
             </div>
           ) : <p className="text-[12.5px] text-muted-foreground">Chưa khai báo SKU theo size.</p>}
           {editVariants && <VariantsDialog p={p} onClose={() => setEditVariants(false)} />}
-          {editBom && <BomDialog p={p} onClose={() => setEditBom(false)} />}
-        </div>
-        <div className="rounded-lg bg-surface-low p-3">
-          <div className="eyebrow mb-1.5">Cơ cấu giá vốn</div>
-          <div className="flex h-2.5 overflow-hidden rounded-full bg-surface-3" role="img" aria-label={`Phụ liệu ${Math.round(matPct)}%, tiền công ${100 - Math.round(matPct)}%`}>
-            <i className="block h-full bg-brand" style={{ width: `${matPct}%` }} />
-            <i className="block h-full bg-brown/70" style={{ width: `${100 - matPct}%` }} />
-          </div>
-          <div className="mt-1.5 flex justify-between text-[12px]">
-            <span><span className="mr-1 inline-block size-2 rounded-full bg-brand" />Phụ liệu <b className="num">{vnd(mat)}</b> <span className="text-subtle">({Math.round(matPct)}%)</span></span>
-            <span><span className="mr-1 inline-block size-2 rounded-full bg-brown/70" />Tiền công <b className="num">{vnd(p.laborCost)}</b></span>
-          </div>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div className="rounded-lg bg-surface-low p-3">
@@ -379,7 +317,7 @@ export default function ProductsPage() {
               </tr>
             </thead>
             <tbody>
-              {shown.length ? shown.map(({ p, mat, cost, stock: st }) => {
+              {shown.length ? shown.map(({ p, cost, stock: st }) => {
                 const isOpen = open === p.id;
                 return (
                   <Fragment key={p.id}>
@@ -422,7 +360,7 @@ export default function ProductsPage() {
                           <div className="flex flex-col gap-3">
                             <SapoVariants p={p} />
                             <CostingCard p={p} />
-                            <ProductDetail p={p} mat={mat} stock={st} />
+                            <ProductDetail p={p} stock={st} />
                           </div>
                         </td>
                       </tr>
