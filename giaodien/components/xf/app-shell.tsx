@@ -22,7 +22,7 @@ export const NAV: { href: string; screen: Screen; label: string; icon: LucideIco
   { href: "/lenh-san-xuat", screen: "orders", label: "Lệnh sản xuất", icon: ClipboardList },
   { href: "/qc", screen: "qc", label: "QC & trả sửa", icon: ShieldCheck },
   { href: "/kho-phu-lieu", screen: "materials", label: "Kho nguyên phụ liệu", icon: Layers },
-  { href: "/san-pham", screen: "products", label: "Sản phẩm & giá vốn", icon: Shirt },
+  { href: "/san-pham", screen: "products", label: "Sản phẩm & định mức", icon: Shirt },
   { href: "/kho-thanh-pham", screen: "finished", label: "Kho thành phẩm", icon: PackageCheck },
   { href: "/sua-cho-khach", screen: "customer", label: "Đồ khách gửi sửa", icon: Scissors },
   { href: "/xuong", screen: "workshops", label: "Xưởng may", icon: Factory },

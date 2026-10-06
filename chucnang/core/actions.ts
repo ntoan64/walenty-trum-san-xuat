@@ -337,7 +337,8 @@ export function importSapo(c: Ctx, items: SapoItem[]): Result {
   for (const it of items) {
     const name = String(it.name ?? "").trim();
     if (!name || name.length > LIMITS.name) { skipped.push(`${name.slice(0, 40) || "(không tên)"}: tên không hợp lệ`); continue; }
-    const variants = cleanVariants(it.variants);
+    // không lưu tồn kho Sapo (web không theo dõi tồn thành phẩm theo Sapo)
+    const variants = cleanVariants(it.variants).map(({ stock: _s, stocks: _ss, ...v }) => v);
     if (!variants.length) continue;
     const skus = new Set(variants.map(v => v.sku));
     // khớp theo SKU; theo tên chỉ khi là mẫu tự tạo chưa có SKU size (Sapo có nhiều mẫu trùng tên)
@@ -363,6 +364,16 @@ export function importSapo(c: Ctx, items: SapoItem[]): Result {
 }
 
 // color: lưu định mức riêng cho màu đó (vải khác màu); bỏ trống = định mức chung
+// Sửa giá bán lẻ / giá nhập hiện tại của 1 phiên bản
+export function setVariantPrice(c: Ctx, productId: string, sku: string, a: { price: number; cost: number }): Result {
+  const p = byId(c.s.products, productId);
+  const v = p?.variants?.find(x => x.sku === sku);
+  if (!p || !v) return fail("Không tìm thấy phiên bản");
+  if (!(a.price >= 0) || !(a.cost >= 0) || a.price > LIMITS.price || a.cost > LIMITS.price) return fail("Giá không hợp lệ");
+  v.price = a.price; v.cost = a.cost;
+  return ok(`${p.name} · ${sku}: giá bán ${vnd(a.price)}, giá nhập ${vnd(a.cost)}`);
+}
+
 export function setProductBom(c: Ctx, id: string, a: { laborCost: number; bom: BomLine[]; color?: string }): Result {
   const p = byId(c.s.products, id);
   if (!p) return fail("Không tìm thấy sản phẩm");
@@ -960,6 +971,7 @@ export const ACTIONS: Record<string, [Action | null, (c: Ctx, ...args: any[]) =>
   importCosting: ["user.manage", importCosting, "Đồng bộ file tính giá"],
   importNvl: ["user.manage", importNvl, "Đồng bộ file nguyên vật liệu"],
   updateMaterial: ["material.manage", updateMaterial, "Sửa phụ liệu"],
+  setVariantPrice: ["product.manage", setVariantPrice, "Sửa giá phiên bản"],
   setProductBom: ["product.manage", setProductBom, "Sửa định mức sản phẩm"],
   createOrder: ["order.create", createOrder, "Tạo lệnh sản xuất"],
   confirmCut: ["order.cut", confirmCut, "Xác nhận đã cắt"],

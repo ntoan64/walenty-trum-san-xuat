@@ -1,8 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { ImageOff } from "lucide-react";
-import { priceRange, sapoStock, type Product } from "@core";
-import { nf, vnd } from "@/lib/format";
+import { type Product, type ProductVariant } from "@core";
+import { useStore, A } from "@/lib/store";
+import { useAction } from "@/lib/use-action";
+import { vnd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 // Ảnh Sapo có sẵn bản thu nhỏ: thumb (~3KB), small (~8KB), compact (~18KB), medium (~37KB)
@@ -31,63 +34,70 @@ export function ProductThumb({ p, size = 40 }: { p: Product; size?: number }) {
 
 export const fmtRange = (r: [number, number] | null) => (!r ? "—" : r[0] === r[1] ? vnd(r[0]) : `${vnd(r[0])} – ${vnd(r[1])}`);
 
-// Bảng phiên bản như trang sản phẩm Sapo: ảnh, size/màu, SKU, tồn từng chi nhánh, đủ các bảng giá
+// 1 dòng phiên bản: giá bán lẻ + giá nhập hiện tại, sửa được
+function VariantRow({ p, v, manage }: { p: Product; v: ProductVariant; manage: boolean }) {
+  const act = useAction();
+  const [f, setF] = useState({ price: String(v.price ?? ""), cost: String(v.cost ?? "") });
+  const [busy, setBusy] = useState(false);
+  const dirty = (+f.price || 0) !== (v.price ?? 0) || (+f.cost || 0) !== (v.cost ?? 0);
+  const save = async () => {
+    setBusy(true);
+    await act("product.manage", A.setVariantPrice, p.id, v.sku, { price: +f.price || 0, cost: +f.cost || 0 });
+    setBusy(false);
+  };
+  const input = "field-input num !min-h-8 !w-32 !py-1 text-right";
+  return (
+    <tr className="border-t border-line hover:bg-surface-2">
+      <td className="px-3 py-1.5"><b className="text-brand">{v.size}</b>{v.color && <span className="text-muted-foreground"> · {v.color}</span>}</td>
+      <td className="num px-3 py-1.5">{v.sku}{v.barcode && v.barcode !== v.sku && <div className="text-[11px] text-subtle">{v.barcode}</div>}</td>
+      <td className="px-3 py-1.5 text-right">
+        {manage ? <input aria-label={`Giá bán lẻ ${v.sku}`} type="number" min={0} step="any" className={input} value={f.price} onChange={e => setF({ ...f, price: e.target.value })} />
+          : <span className="num">{v.price != null ? vnd(v.price) : "—"}</span>}
+      </td>
+      <td className="px-3 py-1.5 text-right">
+        {manage ? <input aria-label={`Giá nhập ${v.sku}`} type="number" min={0} step="any" className={input} value={f.cost} onChange={e => setF({ ...f, cost: e.target.value })} />
+          : <span className="num">{v.cost != null ? vnd(v.cost) : "—"}</span>}
+      </td>
+      {manage && (
+        <td className="px-3 py-1.5 text-right">
+          <button type="button" disabled={!dirty || busy} onClick={save}
+            className={cn("rounded-md px-2.5 py-1 text-xs font-semibold", dirty ? "bg-brand text-brand-fg hover:bg-brand-strong" : "text-subtle")}>
+            {dirty ? "Lưu" : "✓"}
+          </button>
+        </td>
+      )}
+    </tr>
+  );
+}
+
+// Bảng phiên bản: size / màu, SKU, giá bán lẻ, giá nhập hiện tại (sửa được)
 export function SapoVariants({ p }: { p: Product }) {
+  const { can } = useStore();
+  const manage = can("product.manage");
   const vs = p.variants ?? [];
   if (!vs.length) return null;
-  const branches = [...new Set(vs.flatMap(v => Object.keys(v.stocks ?? {})))].sort();
-  const lists = [...new Set(vs.flatMap(v => Object.keys(v.prices ?? {})))];
-  const total = sapoStock(p);
   return (
     <div className="reveal min-w-0 rounded-xl border border-line bg-surface shadow-[0_4px_16px_rgba(31,27,26,0.05)]">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line px-4 py-3">
-        <h3 className="font-serif text-[15px] font-semibold text-brand">Phiên bản Sapo</h3>
+        <h3 className="font-serif text-[15px] font-semibold text-brand">Phiên bản</h3>
         <span className="text-xs text-muted-foreground">
-          {vs.length} phiên bản · tồn <b className="num text-fg">{nf(total)}</b>
+          {vs.length} phiên bản
           {p.category && <> · Loại <b className="text-fg">{p.category}</b></>}
           {p.brand && <> · Nhãn hiệu <b className="text-fg">{p.brand}</b></>}
         </span>
-        {!!p.tags?.length && <span className="flex flex-wrap gap-1">{p.tags.map(t => <span key={t} className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px] text-muted-foreground">{t}</span>)}</span>}
       </div>
       <div className="overflow-x-auto">
-        <table className="w-max min-w-full text-[12.5px]">
+        <table className="w-full text-[12.5px]">
           <thead className="bg-surface-low text-left text-[10.5px] tracking-[0.05em] text-muted-foreground uppercase">
             <tr>
-              <th className="px-3 py-2">Ảnh</th><th className="px-3 py-2">Phiên bản</th><th className="px-3 py-2">SKU / Barcode</th>
-              {branches.map(b => <th key={b} className="px-3 py-2 text-right">Tồn {b}</th>)}
-              <th className="px-3 py-2 text-right">Tồn kho</th>
-              <th className="px-3 py-2 text-right">Giá bán lẻ</th>
-              {lists.map(l => <th key={l} className="px-3 py-2 text-right whitespace-nowrap">{l}</th>)}
-              <th className="px-3 py-2 text-right">Giá nhập</th>
+              <th className="px-3 py-2">Phiên bản</th><th className="px-3 py-2">SKU / Barcode</th>
+              <th className="px-3 py-2 text-right">Giá bán lẻ</th><th className="px-3 py-2 text-right">Giá nhập hiện tại</th>
+              {manage && <th className="w-16" />}
             </tr>
           </thead>
           <tbody>
-            {vs.map(v => (
-              <tr key={v.sku} className="border-t border-line hover:bg-surface-2">
-                <td className="px-3 py-1.5"><Thumb src={sapoImg(v.image, "small")} full={v.image} alt={`${p.name} ${v.size}`} size={36} /></td>
-                <td className="px-3 py-1.5">
-                  <b className="text-brand">{v.size}</b>{v.color && <span className="text-muted-foreground"> · {v.color}</span>}
-                </td>
-                <td className="num px-3 py-1.5">
-                  {v.sku}{v.barcode && v.barcode !== v.sku && <div className="text-[11px] text-subtle">{v.barcode}</div>}
-                </td>
-                {branches.map(b => <td key={b} className="num px-3 py-1.5 text-right text-muted-foreground">{nf(v.stocks?.[b] ?? 0)}</td>)}
-                <td className={cn("num px-3 py-1.5 text-right font-semibold", !(v.stock ?? 0) && "text-subtle")}>{nf(v.stock ?? 0)}</td>
-                <td className="num px-3 py-1.5 text-right font-semibold">{v.price != null ? vnd(v.price) : "—"}</td>
-                {lists.map(l => <td key={l} className="num px-3 py-1.5 text-right">{v.prices?.[l] != null ? vnd(v.prices[l]) : "—"}</td>)}
-                <td className="num px-3 py-1.5 text-right text-brown">{v.cost != null ? vnd(v.cost) : "—"}</td>
-              </tr>
-            ))}
+            {vs.map(v => <VariantRow key={v.sku} p={p} v={v} manage={manage} />)}
           </tbody>
-          <tfoot className="border-t border-line bg-surface-low font-semibold">
-            <tr>
-              <td colSpan={3} className="px-3 py-2">Tổng</td>
-              {branches.map(b => <td key={b} className="num px-3 py-2 text-right">{nf(vs.reduce((t, v) => t + (v.stocks?.[b] ?? 0), 0))}</td>)}
-              <td className="num px-3 py-2 text-right">{nf(total)}</td>
-              <td className="num px-3 py-2 text-right text-muted-foreground">{fmtRange(priceRange(vs.map(v => v.price)))}</td>
-              <td colSpan={lists.length + 1} />
-            </tr>
-          </tfoot>
         </table>
       </div>
     </div>

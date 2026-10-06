@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ChartColumn, Factory, Layers, PackageCheck, Table2 } from "lucide-react";
-import { costOf, MATERIAL_CATEGORIES, sapoStock, sapoValue, sum, type MaterialCategory } from "@core";
+import { costOf, MATERIAL_CATEGORIES, sum, type MaterialCategory } from "@core";
 import { Button } from "@/components/ui/button";
 import { useSapoSheet } from "@/components/xf/sapo-sheet";
 import { groupOrders } from "@/components/xf/sapo-purchase";
@@ -152,9 +152,8 @@ export default function StatsPage() {
   const stock = finishedStock(s);
   const fg = s.finishedTxns.map(t => ({ ...t, ...ymVN(t.at) })).filter(t => t.y === year && (!month || t.m === month));
   const prodRows = s.products.map(p => {
-    const c = costOf(p, s.materials), web = stock[p.id] ?? 0, sapo = p.source === "sapo";
-    const st = sapo ? sapoStock(p) : web;
-    return { p, inQty: sum(fg.filter(t => t.product === p.id), t => t.qty), stock: st, cost: c, value: sapo ? sapoValue(p) : web * c };
+    const c = costOf(p, s.materials), web = stock[p.id] ?? 0;
+    return { p, inQty: sum(fg.filter(t => t.product === p.id), t => t.qty), stock: web, cost: c, value: web * c };
   }).sort((a, b) => b.value - a.value);
 
   const yearTotal = sum(byMonth, v => v);
@@ -309,7 +308,7 @@ export default function StatsPage() {
         </Panel>
       </div>
 
-      <Panel title={`Thành phẩm · tồn theo Sapo, nhập kho SX ${periodLabel}`} icon={PackageCheck} flush>
+      <Panel title={`Thành phẩm · tồn, nhập kho SX ${periodLabel}`} icon={PackageCheck} flush>
         <TableWrap>
           <table className="wl-table">
             <thead><tr><th className="w-12">Ảnh</th><th>Sản phẩm</th><th className="r">Nhập kho SX</th><th className="r">Tồn</th><th className="r">Giá vốn / cái</th><th className="r">Giá trị tồn</th></tr></thead>

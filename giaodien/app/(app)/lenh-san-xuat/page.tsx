@@ -51,7 +51,7 @@ function CreateOrder() {
   const workshops = s.workshops.filter(w => w.active);
   const ws = workshops.find(w => w.id === f.ws) ?? workshops[0];
   if (!workshops.length) return can("order.create") ? <Panel><EmptyState>Chưa có xưởng nào đang hợp tác. Thêm xưởng ở trang Xưởng may trước khi tạo lệnh.</EmptyState></Panel> : null;
-  if (!p) return can("order.create") ? <Panel><EmptyState>Chưa có sản phẩm nào đang sản xuất. Thêm hoặc mở lại sản phẩm ở trang Sản phẩm & giá vốn.</EmptyState></Panel> : null;
+  if (!p) return can("order.create") ? <Panel><EmptyState>Chưa có sản phẩm nào đang sản xuất. Thêm hoặc mở lại sản phẩm ở trang Sản phẩm & định mức.</EmptyState></Panel> : null;
   const unusable = unusableMaterials(p, s.materials);
   const short = qty > 0 ? shortages(p, qty, s.materials) : [];
   const need = needFor(p, qty, s.materials);
@@ -165,7 +165,7 @@ function CreateOrder() {
 
           {noBom ? (
             <CalcHint bad>
-              <b>{p.name}{color ? ` (${color})` : ""} chưa có định mức phụ liệu.</b> Khai báo ở trang Sản phẩm & giá vốn trước khi tạo lệnh.
+              <b>{p.name}{color ? ` (${color})` : ""} chưa có định mức phụ liệu.</b> Khai báo ở trang Sản phẩm & định mức trước khi tạo lệnh.
             </CalcHint>
           ) : unusable.length ? (
             <CalcHint bad>

@@ -3,7 +3,7 @@
 import { Fragment, useState } from "react";
 import { ChevronRight, Info, Pencil, Plus, Shirt, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { byId, costBreakdown, costOf, displayColor, hasBom, isLive, materialCost, priceRange, PRODUCT_STATUS, sapoStock, sum, type BomLine, type ItemStatus, type Product, type ProductVariant } from "@core";
+import { byId, costBreakdown, costOf, displayColor, hasBom, isLive, materialCost, priceRange, PRODUCT_STATUS, sum, type BomLine, type ItemStatus, type Product, type ProductVariant } from "@core";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { VariantsEditor } from "@/components/xf/variants-editor";
 import { SapoSheetPanel } from "@/components/xf/sapo-sheet";
@@ -284,7 +284,7 @@ export default function ProductsPage() {
   const stock = finishedStock(s);
 
   const rows = s.products
-    .map((p, i) => ({ p, i, mat: materialCost(p, s.materials), cost: costOf(p, s.materials), stock: stock[p.id] ?? 0, sapo: sapoStock(p) }))
+    .map((p, i) => ({ p, i, mat: materialCost(p, s.materials), cost: costOf(p, s.materials), stock: stock[p.id] ?? 0 }))
     .filter(r => status === "all" || r.p.status === status)
     .filter(r => !cat || r.p.category === cat)
     .filter(r => matches(q, r.p.sku, r.p.name, r.p.category, r.p.brand, r.p.tags?.join(" "),
@@ -293,7 +293,6 @@ export default function ProductsPage() {
       sort === "name" ? a.p.name.localeCompare(b.p.name, "vi")
       : sort === "sku" ? a.p.sku.localeCompare(b.p.sku, "vi", { numeric: true })
       : sort === "cost" ? b.cost - a.cost
-      : sort === "stock" ? b.sapo + b.stock - (a.sapo + a.stock)
       : b.i - a.i); // mới thêm lên đầu
   const shown = rows.slice(0, limit);
   const count = (k: "all" | ItemStatus) => s.products.filter(p => k === "all" || p.status === k).length;
@@ -320,8 +319,8 @@ export default function ProductsPage() {
     <>
       <PageHeader
         eyebrow={<>Phân hệ kho <span className="text-subtle">/</span> <span className="text-subtle">Sản phẩm</span></>}
-        title="Sản phẩm & giá vốn"
-        desc="Đồng bộ từ Sapo (ảnh, phiên bản, tồn, bảng giá). Giá vốn = định mức phụ liệu + tiền công; mẫu chưa khai báo định mức tạm lấy giá nhập Sapo. Bấm một dòng để xem chi tiết."
+        title="Sản phẩm & định mức"
+        desc="Đồng bộ từ Sapo (ảnh, phiên bản, giá). Giá vốn = định mức phụ liệu + tiền công; mẫu chưa khai báo định mức tạm lấy giá nhập Sapo. Bấm một dòng để xem chi tiết."
         aside={
           <div className="grid w-full grid-cols-3 gap-2 min-[1500px]:w-auto">
             <StatCard className="min-[1500px]:min-w-[110px]" label="Sản phẩm" value={s.products.length} unit="mã" tone="brand" />
@@ -365,7 +364,6 @@ export default function ProductsPage() {
               <option value="name">Tên A → Z</option>
               <option value="sku">SKU</option>
               <option value="cost">Giá vốn cao → thấp</option>
-              <option value="stock">Tồn nhiều → ít</option>
             </select>
           </label>
           </div>
@@ -377,11 +375,11 @@ export default function ProductsPage() {
               <tr>
                 <th className="w-8" />
                 <th className="w-12">Ảnh</th><th>Sản phẩm</th><th>Loại</th><th>Nhãn hiệu</th>
-                <th className="r">Tồn kho</th><th className="r">Giá bán lẻ</th><th className="r">Giá vốn / cái</th><th>Tình trạng</th>
+                <th className="r">Giá bán lẻ</th><th className="r">Giá vốn / cái</th><th>Tình trạng</th>
               </tr>
             </thead>
             <tbody>
-              {shown.length ? shown.map(({ p, mat, cost, stock: st, sapo }) => {
+              {shown.length ? shown.map(({ p, mat, cost, stock: st }) => {
                 const isOpen = open === p.id;
                 return (
                   <Fragment key={p.id}>
@@ -403,11 +401,6 @@ export default function ProductsPage() {
                       </td>
                       <td className="text-[12.5px] whitespace-nowrap">{p.category ?? <span className="text-subtle">—</span>}</td>
                       <td className="text-[12.5px] text-muted-foreground">{p.brand ?? ""}</td>
-                      <td className="r num">
-                        <b>{nf(p.source === "sapo" ? sapo : st)}</b>
-                        {!!p.variants?.length && <div className="text-[11px] font-normal text-subtle">({p.variants.length} phiên bản)</div>}
-                        {p.source === "sapo" && st > 0 && <div className="text-[11px] font-normal text-ok" title="Đã nhập kho thành phẩm từ sản xuất trên web">+{nf(st)} SX</div>}
-                      </td>
                       <td className="r num whitespace-nowrap">{fmtRange(priceRange(p.variants?.map(v => v.price) ?? []))}</td>
                       <td className="r num whitespace-nowrap">
                         <b className="text-brand">{vnd(cost)}</b>
@@ -425,7 +418,7 @@ export default function ProductsPage() {
                     {isOpen && (
                       <tr className="hover:!bg-transparent">
                         <td />
-                        <td colSpan={8} className="!pt-0">
+                        <td colSpan={7} className="!pt-0">
                           <div className="flex flex-col gap-3">
                             <SapoVariants p={p} />
                             <CostingCard p={p} />
@@ -437,7 +430,7 @@ export default function ProductsPage() {
                   </Fragment>
                 );
               }) : (
-                <tr><td colSpan={9}><EmptyState>{s.products.length ? "Không tìm thấy sản phẩm phù hợp." : "Chưa có sản phẩm nào. Thêm ở khối bên trên."}</EmptyState></td></tr>
+                <tr><td colSpan={8}><EmptyState>{s.products.length ? "Không tìm thấy sản phẩm phù hợp." : "Chưa có sản phẩm nào. Thêm ở khối bên trên."}</EmptyState></td></tr>
               )}
             </tbody>
           </table>

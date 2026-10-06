@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { History, PackageCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { byId, costOf, sapoStock, sapoValue, sum } from "@core";
+import { byId, costOf, sum } from "@core";
 import { ProductThumb } from "@/components/xf/sapo-product";
 import { matches } from "@/lib/search";
 import { SearchBox } from "@/components/xf/search-box";
@@ -23,8 +23,8 @@ export default function FinishedPage() {
   // Mẫu tự tạo: tồn = hàng QC pass nhập trên web × giá vốn theo định mức.
   // Cột "Nhập từ SX" luôn là số web tự ghi khi QC pass (để đối chiếu với Sapo).
   const allRows = s.products.map(p => {
-    const web = stock[p.id] ?? 0, c = costOf(p, s.materials), sapo = p.source === "sapo";
-    return { p, web, c, q: sapo ? sapoStock(p) : web, v: sapo ? sapoValue(p) : web * c };
+    const web = stock[p.id] ?? 0, c = costOf(p, s.materials);
+    return { p, web, c, q: web, v: web * c };
   }).sort((a, b) => b.q - a.q);
   const totalQ = sum(allRows, r => r.q);
   const totalV = sum(allRows, r => r.v);
@@ -39,7 +39,7 @@ export default function FinishedPage() {
       <PageHeader
         eyebrow={<>Phân hệ kho <span className="text-subtle">/</span> <span className="text-subtle">Thành phẩm</span></>}
         title="Kho thành phẩm"
-        desc="Tồn lấy theo Sapo (lần nhập file gần nhất). Hàng QC pass trên web ghi ở cột Nhập từ SX và lịch sử bên dưới."
+        desc="Chỉ hàng QC pass mới được nhập vào đây. Kho nhận tin mỗi khi có hàng mới."
         aside={
           <div className="grid w-full grid-cols-2 gap-2 min-[1500px]:w-auto">
             <StatCard className="min-[1500px]:min-w-[130px]" label="Tồn" value={nf(totalQ)} unit="cái" tone="brand" />
