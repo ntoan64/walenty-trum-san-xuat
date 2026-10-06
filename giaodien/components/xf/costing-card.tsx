@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Calculator, Pencil } from "lucide-react";
 import { bomOf, byId, colorsOf, costBreakdown, costRatio, formulaPrice, priceRange, type Product } from "@core";
 import { useStore, A } from "@/lib/store";
@@ -53,6 +54,7 @@ function LaborEdit({ productId, color, labor, workshopId, sewType, editable }: {
             className={cn("rounded-md px-2.5 py-1 text-xs font-semibold", changed && ws ? "bg-brand text-brand-fg hover:bg-brand-strong" : "text-subtle")}>{changed ? "Lưu" : "✓"}</button>
         </div>
         {!ws && <p className="text-[11.5px] text-warn">Chọn xưởng may trước.</p>}
+        {ws && <Link href="/xuong" className="text-[11.5px] font-semibold text-brand hover:underline">{w?.rates?.length ? "Sửa bảng giá xưởng này" : "Xưởng chưa có bảng giá, thêm ở trang Xưởng may & NCC"} →</Link>}
       </div>
     </div>
   );
@@ -128,6 +130,7 @@ export function CostingCard({ p }: { p: Product }) {
         <p className="px-4 py-3 text-[13px] text-muted-foreground">Chưa có định mức hay bảng tính giá cho mẫu này.</p>
       ) : (
         <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          <div className="flex min-w-0 flex-col gap-3">
           <div className="overflow-hidden rounded-lg border border-line">
             <table className="w-full text-[13px]">
               <tbody>
@@ -149,6 +152,8 @@ export function CostingCard({ p }: { p: Product }) {
             </table>
             {b.fabricFrom === "file" && <p className="border-t border-line px-3 py-1.5 text-[11.5px] text-warn">Vải đang tính theo file tính giá. Khai báo định mức để trừ kho và tính theo giá bình quân thực tế.</p>}
             {c?.zipper ? <p className="border-t border-line px-3 py-1.5 text-[11.5px] text-subtle">Dây kéo {vnd(c.zipper)} (file ghi riêng, không cộng vào phụ liệu).</p> : null}
+          </div>
+            <LaborEdit key={`lab-${p.id}-${k}-${b.labor}-${c?.workshop ?? ""}`} productId={p.id} color={color} labor={b.labor} workshopId={c?.workshop} sewType={c?.sewType} editable={can("product.manage")} />
           </div>
           <div className="flex flex-col gap-2 text-[13px]">
             {target ? (
@@ -173,7 +178,6 @@ export function CostingCard({ p }: { p: Product }) {
                 <div className="text-[11.5px] text-subtle">giá vốn ÷ (giá bán ÷ 1,08)</div>
               </div>
             ) : null}
-            <LaborEdit key={`lab-${p.id}-${k}-${b.labor}-${c?.workshop ?? ""}`} productId={p.id} color={color} labor={b.labor} workshopId={c?.workshop} sewType={c?.sewType} editable={can("product.manage")} />
             <TargetRatio key={`${p.id}-${k}-${target ?? ""}`} productId={p.id} color={color} target={target} editable={can("product.manage")} />
             {(c?.rating || c?.updated) && <p className="text-[12px] text-muted-foreground">{c.rating && <>Đánh giá: <b className="text-fg">{c.rating}</b></>}{c.updated && <> · cập nhật {c.updated.split("-").reverse().join("/")}</>}</p>}
           </div>
