@@ -13,6 +13,7 @@ import { useDraft } from "@/lib/use-draft";
 import { Summary } from "./confirm-provider";
 import { EmptyState, Field, StatusPill, type PillTone } from "./basics";
 import { SearchPicker } from "./search-picker";
+import { EditDialog } from "./edit-dialog";
 
 // Phiếu đồ khách gửi sửa (dùng ở trang Đồ khách gửi sửa và trang QC)
 export const STEPS: { key: CustomerRepairStatus; label: string; tone: PillTone }[] = [
@@ -98,6 +99,10 @@ function RepairCard({ r, now, onSend, onNote }: { r: CustomerRepair; now: Date; 
   const ws = r.workshop ? byId(s.workshops, r.workshop)?.name : undefined;
   const allowed = can("customer.repair");
   const qcOk = can("customer.qc"); // sale chỉ tạo yêu cầu + xác nhận hoàn thành
+  const admin = can("order.admin");
+  const ask = useAskAction();
+  const [editing, setEditing] = useState(false);
+  const ymd = (d: Date) => new Date(d.getTime() + 7 * 3600e3).toISOString().slice(0, 10);
   return (
     <article className={cn("card flex flex-col gap-2.5 rounded-xl p-4", late && "border-bad")}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -106,7 +111,14 @@ function RepairCard({ r, now, onSend, onNote }: { r: CustomerRepair; now: Date; 
           <StatusPill tone={st.tone} dot>{st.label}</StatusPill>
           {late && <StatusPill tone="bad">Trễ hẹn {daysLate(r.promisedAt, now)} ngày</StatusPill>}
         </div>
-        <span className="text-xs text-muted-foreground">Hẹn trả <b className={cn("num", late ? "text-bad" : "text-fg")}>{fmtD(r.promisedAt)}</b></span>
+        <span className="text-xs text-muted-foreground">Hẹn trả <b className={cn("num", late ? "text-bad" : "text-fg")}>{fmtD(r.promisedAt)}</b>
+          {admin && <Button size="sm" variant="secondary" className="ml-2" onClick={() => setEditing(true)}>Sửa thông tin</Button>}
+          {admin && <Button size="sm" variant="destructive" className="ml-1" onClick={() => act({ title: `Xóa phiếu ${r.code}?`, confirmLabel: "Xóa", description: "Xóa hẳn phiếu và lịch sử của phiếu. Không khôi phục được." }, "order.admin", A.deleteCustomerRepair, r.id)}>Xóa</Button>}</span>
+        {editing && <EditDialog title={`Sửa phiếu ${r.code}`}
+          fields={[{ key: "customerName", label: "Tên khách" }, { key: "customerPhone", label: "SĐT khách" }, { key: "orderCode", label: "Mã ĐH Sapo (SON)", upper: true }, { key: "promisedDate", label: "Hẹn trả", type: "date" }, { key: "item", label: "Sản phẩm", full: true }, { key: "request", label: "Khách muốn sửa", type: "textarea" }, { key: "note", label: "Ghi chú", type: "textarea" }]}
+          initial={{ customerName: r.customerName, customerPhone: r.customerPhone, orderCode: r.orderCode ?? "", promisedDate: ymd(r.promisedAt), item: r.item, request: r.request, note: r.note ?? "" }}
+          onSave={async v => !!(await ask("order.admin", A.updateCustomerRepair, r.id, { customerName: v.customerName, customerPhone: v.customerPhone, orderCode: v.orderCode, item: v.item, request: v.request, note: v.note, promisedDate: v.promisedDate }))?.ok}
+          onClose={() => setEditing(false)} />}
       </div>
 
       <div className="grid gap-x-4 gap-y-1 text-[13px] sm:grid-cols-2">

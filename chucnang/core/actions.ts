@@ -245,6 +245,16 @@ export function toggleWorkshop(c: Ctx, id: string): Result {
   return ok(w.active ? `Đã hợp tác lại với ${w.name}` : `Đã ngừng hợp tác với ${w.name}`);
 }
 
+// Xóa xưởng / NCC: chỉ khi chưa có lệnh, phiếu sửa, đồ khách nào gắn với xưởng
+export function deleteWorkshop(c: Ctx, id: string): Result {
+  const w = byId(c.s.workshops, id);
+  if (!w) return fail("Không tìm thấy xưởng");
+  if (c.s.orders.some(o => o.workshop === id) || c.s.repairs.some(r => r.workshop === id) || (c.s.customerRepairs ?? []).some(r => r.workshop === id))
+    return fail(`${w.name} đã có lệnh / phiếu sửa, không xóa được. Bấm Ngừng hợp tác thay vì xóa.`);
+  c.s.workshops = c.s.workshops.filter(x => x !== w);
+  return ok(`Đã xóa ${w.name}`);
+}
+
 /* ---------- đồ khách gửi sửa ---------- */
 type CustomerRepairInput = { customerName: string; customerPhone: string; orderCode?: string; item: string; size: string; request: string; note?: string; promisedDate: string };
 
@@ -273,6 +283,31 @@ export function createCustomerRepair(c: Ctx, a: CustomerRepairInput): Result {
   });
   notify(c, ["quanly", "kho", "qc"], `🧵 Yêu cầu sửa đồ khách ${code}${orderCode ? ` (ĐH ${orderCode})` : ""}: ${item}${a.size ? ` (${a.size})` : ""}\nKhách ${name} · muốn sửa: ${request}\nHẹn trả ${fmtD(promisedAt)}.`);
   return ok(`Đã gửi yêu cầu ${code}, chờ QC nhận hàng`, code);
+}
+
+// Quản lý sửa thông tin phiếu đã tạo
+export function updateCustomerRepair(c: Ctx, id: string, a: Omit<CustomerRepairInput, "size">): Result {
+  const r = (c.s.customerRepairs ?? []).find(x => x.id === id);
+  if (!r) return fail("Không tìm thấy phiếu");
+  const name = a.customerName.trim(), phone = a.customerPhone.trim(), item = a.item.trim(), request = a.request.trim();
+  const orderCode = (a.orderCode ?? "").trim().toUpperCase();
+  if (!name || !item || !request) return fail("Nhập đủ tên khách, sản phẩm, yêu cầu sửa");
+  if (!/^[0-9 +.]{9,15}$/.test(phone)) return fail("Số điện thoại khách không hợp lệ (9–15 số)");
+  if (!/^[A-Z0-9][A-Z0-9_-]{1,29}$/.test(orderCode)) return fail("Mã đơn hàng chỉ gồm chữ, số (vd SON15488)");
+  if (name.length > 60 || item.length > LIMITS.name || request.length > LIMITS.text || tooLong(a.note, LIMITS.text)) return fail("Thông tin quá dài");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(a.promisedDate)) return fail("Chọn ngày hẹn trả khách");
+  const promisedAt = new Date(`${a.promisedDate}T23:59:59+07:00`);
+  if (isNaN(promisedAt.getTime())) return fail("Ngày hẹn không hợp lệ");
+  Object.assign(r, { customerName: name, customerPhone: phone, orderCode, item, request, note: a.note?.trim() || undefined, promisedAt });
+  r.history.push({ at: tick(c), by: c.me, text: "Sửa thông tin phiếu" });
+  return ok(`Đã sửa ${r.code}`);
+}
+
+export function deleteCustomerRepair(c: Ctx, id: string): Result {
+  const r = (c.s.customerRepairs ?? []).find(x => x.id === id);
+  if (!r) return fail("Không tìm thấy phiếu");
+  c.s.customerRepairs = (c.s.customerRepairs ?? []).filter(x => x !== r);
+  return ok(`Đã xóa phiếu ${r.code}`);
 }
 
 // QC nhận đồ từ sale
@@ -659,6 +694,69 @@ export function setProductVariants(c: Ctx, id: string, list: ProductVariant[]): 
   return ok(`${p.sku}: đã lưu ${variants.length} size`);
 }
 
+export function renameProduct(c: Ctx, id: string, name: string): Result {
+  const p = byId(c.s.products, id);
+  if (!p) return fail("Không tìm thấy sản phẩm");
+  const n = name.trim();
+  if (!n) return fail("Nhập tên sản phẩm");
+  if (n.length > LIMITS.name) return fail("Tên quá dài");
+  if (n === p.name) return fail("Tên không đổi");
+  const old = p.name;
+  p.name = n;
+  return ok(`Đã đổi tên "${old}" → "${n}"`);
+}
+
+// Sửa phiếu nhập đã lưu: đổi số lượng / giá → tồn và giá BQ tính lại theo chênh lệch
+export function editImport(c: Ctx, txnId: string, a: { qty: number; price: number }): Result {
+  const t = c.s.materialTxns.find(x => x.id === txnId);
+  if (!t || t.type !== "in") return fail("Không tìm thấy dòng nhập");
+  const m = byId(c.s.materials, t.material);
+  if (!m) return fail("Phụ liệu đã bị xóa");
+  if (!(a.qty > 0) || a.qty > 1e7 || !(a.price >= 0) || a.price > 1e9) return fail("Số lượng / giá không hợp lệ");
+  const oldQty = t.qty, oldPrice = t.price ?? 0;
+  if (a.qty === oldQty && a.price === oldPrice) return fail("Không có gì thay đổi");
+  const stock = Math.round((m.stock - oldQty + a.qty) * 1000) / 1000;
+  if (stock < 0) return fail(`Đã xuất bớt, giảm xuống ${nf(a.qty, 2)} sẽ làm tồn âm (${nf(stock, 2)})`);
+  const value = Math.max(0, m.stock * m.avgPrice - oldQty * oldPrice + a.qty * a.price);
+  m.avgPrice = stock > 0 ? Math.round(value / stock) : m.avgPrice;
+  m.stock = stock;
+  m.totalImportQty += a.qty - oldQty;
+  m.totalImportCost += a.qty * a.price - oldQty * oldPrice;
+  t.qty = a.qty; t.price = a.price;
+  t.reason = `Đã sửa: ${nf(oldQty, 2)} × ${vnd(oldPrice)} → ${nf(a.qty, 2)} × ${vnd(a.price)}`;
+  if (m.status === "active") checkLow(c, m);
+  return ok(`${m.code}: ${t.reason}, tồn ${nf(m.stock, 2)}, giá BQ ${vnd(m.avgPrice)}`);
+}
+
+// Xóa dòng nhập: trừ lại tồn, giá BQ tính lại như chưa từng nhập lần đó
+export function deleteImport(c: Ctx, txnId: string): Result {
+  const t = c.s.materialTxns.find(x => x.id === txnId);
+  if (!t || t.type !== "in") return fail("Không tìm thấy dòng nhập");
+  const m = byId(c.s.materials, t.material);
+  if (m) {
+    const stock = Math.round((m.stock - t.qty) * 1000) / 1000;
+    if (stock < 0) return fail(`Đã xuất bớt ${m.code}, xóa dòng nhập này sẽ làm tồn âm (${nf(stock, 2)}). Sửa số lượng thay vì xóa.`);
+    const value = Math.max(0, m.stock * m.avgPrice - t.qty * (t.price ?? 0));
+    m.avgPrice = stock > 0 ? Math.round(value / stock) : m.avgPrice;
+    m.stock = stock;
+    m.totalImportQty -= t.qty;
+    m.totalImportCost -= t.qty * (t.price ?? 0);
+  }
+  c.s.materialTxns = c.s.materialTxns.filter(x => x !== t);
+  return ok(`Đã xóa dòng nhập ${nf(t.qty, 2)} ${m?.unit ?? ""} ${m?.code ?? ""}`);
+}
+
+// Xóa sản phẩm: chỉ khi chưa có lệnh sản xuất nào dùng (đã có lệnh thì chuyển Ngừng sản xuất)
+export function deleteProduct(c: Ctx, id: string): Result {
+  const p = byId(c.s.products, id);
+  if (!p) return fail("Không tìm thấy sản phẩm");
+  const n = c.s.orders.filter(o => o.product === id).length;
+  if (n) return fail(`${p.name} đã có ${n} lệnh sản xuất, không xóa được. Đổi tình trạng sang Ngừng sản xuất, hoặc hủy/xóa lệnh trước.`);
+  c.s.products = c.s.products.filter(x => x !== p);
+  c.s.finishedTxns = c.s.finishedTxns.filter(t => t.product !== id);
+  return ok(`Đã xóa ${p.sku} · ${p.name}`);
+}
+
 export function setProductStatus(c: Ctx, id: string, status: ItemStatus): Result {
   const p = byId(c.s.products, id);
   if (!p) return fail("Không tìm thấy sản phẩm");
@@ -915,6 +1013,35 @@ export function saveQC(c: Ctx, orderId: string, batchId: string, a: { lines: Def
   return ok(`Đã lưu QC: ${q.pass} pass, ${q.sua + q.vai + q.hong} fail`);
 }
 
+// Làm lại QC 1 đợt: gỡ kết quả cũ (thành phẩm, phiếu sửa, thống kê) để QC nhập lại
+export function undoQC(c: Ctx, orderId: string, batchId: string): Result {
+  const o = getOrder(c, orderId);
+  const bt = o?.batches.find(x => x.id === batchId);
+  if (!o || !bt?.qc) return fail("Đợt này chưa QC");
+  if (o.step === "done") return fail("Lệnh đã đóng, không sửa QC được");
+  const q = bt.qc, at = q.at.getTime();
+  const rp = q.sua > 0 ? c.s.repairs.find(r => r.order === o.id && r.round === 1 && !r.parent && r.qty === q.sua && r.sentAt.getTime() === at) : undefined;
+  if (q.sua > 0) {
+    if (!rp) return fail("Không tìm thấy phiếu sửa của đợt này");
+    if (rp.status !== "sent" || rp.backSizes?.length || rp.requc) return fail(`Phiếu sửa ${rp.code} đã xử lý (xưởng trả / QC lại), không sửa QC đợt này được`);
+  }
+  if (q.pass > 0) {
+    const have = c.s.finishedTxns.filter(t => t.product === o.product).reduce((t, x) => t + x.qty, 0);
+    if (have < q.pass) return fail(`Kho thành phẩm chỉ còn ${have}, không gỡ được ${q.pass} cái pass`);
+    const ft = c.s.finishedTxns.slice().reverse().find(t => t.order === o.code && !t.repair && t.qty === q.pass && t.at.getTime() >= at);
+    if (ft) c.s.finishedTxns = c.s.finishedTxns.filter(t => t !== ft);
+    else c.s.finishedTxns.push({ id: uid(c, "f"), product: o.product, qty: -q.pass, order: o.code, note: `Sửa QC ${o.code}`, by: c.me, at: tick(c) });
+  }
+  for (const k of ["pass", "sua", "vai", "hong"] as const) {
+    if (!q[k]) continue;
+    const ev = c.s.events.slice().reverse().find(e => e.order === o.id && e.type === k && e.round === 1 && e.qty === q[k] && e.at.getTime() >= at);
+    if (ev) c.s.events = c.s.events.filter(e => e !== ev);
+  }
+  if (rp) c.s.repairs = c.s.repairs.filter(r => r !== rp);
+  bt.qc = null;
+  return ok(`Đã gỡ kết quả QC đợt này của ${o.code}, nhập QC lại`);
+}
+
 export function reportLoss(c: Ctx, orderId: string, qty: number): Result {
   const o = getOrder(c, orderId);
   if (!o || o.step === "done" || o.step === "cut") return fail("Lệnh không ở bước ghi hao hụt");
@@ -960,6 +1087,17 @@ function returnMaterial(c: Ctx, m: Material, qty: number, code: string, reason: 
   if (qty <= 0) return;
   m.stock = Math.round((m.stock + qty) * 100) / 100;
   c.s.materialTxns.push({ id: uid(c, "t"), material: m.id, type: "adjust", qty, order: code, reason, stockAfter: m.stock, avgAfter: m.avgPrice, by: c.me, at: tick(c) });
+}
+
+// Xóa hẳn lệnh đã hủy (kèm phiếu sửa, thống kê của lệnh)
+export function deleteOrder(c: Ctx, id: string): Result {
+  const o = getOrder(c, id);
+  if (!o) return fail("Không tìm thấy lệnh");
+  if (!o.cancelled) return fail("Hủy lệnh trước rồi mới xóa hẳn được");
+  c.s.orders = c.s.orders.filter(x => x !== o);
+  c.s.repairs = c.s.repairs.filter(r => r.order !== id);
+  c.s.events = c.s.events.filter(e => e.order !== id);
+  return ok(`Đã xóa hẳn lệnh ${o.code}`);
 }
 
 export function cancelOrder(c: Ctx, id: string, a: { reason: string; returnMaterials: boolean; removeFinished: boolean }): Result {
@@ -1211,6 +1349,14 @@ export const ACTIONS: Record<string, [Action | null, (c: Ctx, ...args: any[]) =>
   storeConfirmCustomerRepair: ["customer.repair", storeConfirmCustomerRepair, "Cửa hàng kiểm tra, xác nhận nhập SON"],
   noteCustomerRepair: ["customer.repair", noteCustomerRepair, "Ghi chú đồ khách"],
   createProduct: ["product.manage", createProduct, "Thêm sản phẩm"],
+  renameProduct: ["product.manage", renameProduct, "Đổi tên sản phẩm"],
+  editImport: ["material.manage", editImport, "Sửa phiếu nhập"],
+  updateCustomerRepair: ["order.admin", updateCustomerRepair, "Sửa phiếu đồ khách"],
+  undoQC: ["order.admin", undoQC, "Làm lại QC"],
+  deleteImport: ["material.manage", deleteImport, "Xóa dòng nhập kho"],
+  deleteProduct: ["product.manage", deleteProduct, "Xóa sản phẩm"],
+  deleteCustomerRepair: ["order.admin", deleteCustomerRepair, "Xóa phiếu đồ khách"],
+  deleteWorkshop: ["workshop.manage", deleteWorkshop, "Xóa xưởng / NCC"],
   setProductStatus: ["product.manage", setProductStatus, "Đổi tình trạng sản phẩm"],
   setProductVariants: ["product.manage", setProductVariants, "Sửa size + SKU sản phẩm"],
   importSapo: ["product.manage", importSapo, "Nhập sản phẩm từ Sapo"],
@@ -1238,6 +1384,7 @@ export const ACTIONS: Record<string, [Action | null, (c: Ctx, ...args: any[]) =>
   closeOrder: ["order.close", closeOrder, "Đóng lệnh"],
   editOrder: ["order.admin", editOrder, "Sửa lệnh (admin)"],
   cancelOrder: ["order.admin", cancelOrder, "Hủy lệnh (admin)"],
+  deleteOrder: ["order.admin", deleteOrder, "Xóa hẳn lệnh đã hủy"],
   repairStatus: ["repair.status", repairStatus, "Cập nhật phiếu sửa"],
   requc: ["repair.requc", requc, "QC lại phiếu sửa"],
   sendReport: ["report.send", sendReport, "Gửi báo cáo Telegram"],

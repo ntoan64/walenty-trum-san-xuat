@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { ClipboardList, Pencil, Receipt, Warehouse } from "lucide-react";
+import { ClipboardList, Pencil, Trash2, Receipt, Warehouse } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   byId, materialForecast, MATERIAL_CATEGORIES, MATERIAL_STATUS, okLevel, stockLevel, sum,
-  type ItemStatus, type Material, type MaterialCategory,
+  type ItemStatus, type Material, type MaterialCategory, type MaterialTxn,
 } from "@core";
 import { matches } from "@/lib/search";
 import { SearchBox } from "@/components/xf/search-box";
@@ -22,6 +22,7 @@ import { useDraft } from "@/lib/use-draft";
 import { ExportButton } from "@/components/xf/export-button";
 import { EmptyState, Field, PageHeader, Panel, StatCard, StatusPill, TableWrap, Tag } from "@/components/xf/basics";
 import { SearchPicker } from "@/components/xf/search-picker";
+import { EditDialog, toNum } from "@/components/xf/edit-dialog";
 
 const CATS = Object.entries(MATERIAL_CATEGORIES) as [MaterialCategory, string][];
 
@@ -122,6 +123,9 @@ export default function MaterialsPage() {
     .slice(0, 40);
 
   const [editing, setEditing] = useState<Material | null>(null);
+  const [editTxn, setEditTxn] = useState<MaterialTxn | null>(null);
+  const askAct = useAskAction();
+  const confirmDel = useConfirmAction();
 
   const changeStatus = (id: string, status: ItemStatus) => {
     const m = byId(s.materials, id)!;
@@ -273,7 +277,11 @@ export default function MaterialsPage() {
                     <td className="num">{m.code}</td>
                     <td>{t.type === "in" ? <StatusPill tone="ok">Nhập</StatusPill> : t.type === "adjust" ? <StatusPill tone="info">{t.reason?.startsWith("Sửa tay") ? "Sửa tay" : "Hoàn kho"}</StatusPill> : <StatusPill tone="muted">Xuất</StatusPill>}</td>
                     <td className="r num">{t.type === "out" || t.qty < 0 ? "−" : "+"}{nf(Math.abs(t.qty), 2)}</td>
-                    <td className="r num">{t.type === "in" ? vnd(t.price ?? 0) : ""}</td>
+                    <td className="r num whitespace-nowrap">{t.type === "in" ? vnd(t.price ?? 0) : ""}
+                      {t.type === "in" && manage && <button type="button" aria-label="Sửa dòng nhập" onClick={() => setEditTxn(t)}
+                        className="ml-1 rounded p-1 align-middle text-subtle hover:bg-surface-3 hover:text-brand"><Pencil className="size-3.5" /></button>}
+                      {t.type === "in" && manage && <button type="button" aria-label="Xóa dòng nhập" onClick={() => confirmDel({ title: `Xóa dòng nhập ${m.code}?`, confirmLabel: "Xóa", description: <Summary rows={[["Ngày", fmtD(t.at)], ["Số lượng", `${nf(t.qty, 2)} ${m.unit} × ${vnd(t.price ?? 0)}`], ["Sau khi xóa", "Trừ lại tồn, tính lại giá BQ"]]} /> }, "material.manage", A.deleteImport, t.id)}
+                        className="ml-0.5 rounded p-1 align-middle text-subtle hover:bg-bad/10 hover:text-bad"><Trash2 className="size-3.5" /></button>}</td>
                     <td className={t.type === "in" ? "" : "num"}>{t.type === "in" ? t.supplier : t.order}{t.reason && <div className="font-sans text-xs text-muted-foreground">{t.reason}</div>}</td>
                     <td className="r num">{nf(t.stockAfter, 2)}</td>
                     <td className="r num">{t.type === "in" ? vnd(t.avgAfter) : ""}</td>
@@ -286,6 +294,12 @@ export default function MaterialsPage() {
         </TableWrap>
       </Panel>
       {editing && <EditMaterialDialog m={editing} onClose={() => setEditing(null)} />}
+      {editTxn && <EditDialog title={`Sửa phiếu nhập · ${byId(s.materials, editTxn.material)?.code}`}
+        desc={<>Nhập ngày {fmtD(editTxn.at)} từ {editTxn.supplier}. Tồn và giá BQ sẽ tính lại theo chênh lệch.</>}
+        fields={[{ key: "qty", label: `Số lượng (${byId(s.materials, editTxn.material)?.unit ?? ""})`, type: "number" }, { key: "price", label: "Đơn giá (đ)", type: "number" }]}
+        initial={{ qty: String(editTxn.qty), price: String(editTxn.price ?? 0) }}
+        onSave={async v => !!(await askAct("material.manage", A.editImport, editTxn.id, { qty: toNum(v.qty), price: toNum(v.price) }))?.ok}
+        onClose={() => setEditTxn(null)} />}
     </>
   );
 }

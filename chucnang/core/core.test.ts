@@ -325,3 +325,44 @@ describe('giá BQ sau mỗi lần nhập (trên phần còn trong kho)', () => {
     expect(m.avgPrice).toBe(1500)
   })
 })
+
+describe('admin sửa / xóa', () => {
+  it('sửa + xóa dòng nhập, sửa tồn, làm lại QC, xóa sản phẩm / lệnh', async () => {
+    const A = await import('./actions')
+    const { createBaseState } = await import('./state')
+    const s = createBaseState()
+    const c = { s, me: 'Phan Anh', meId: 'u1', now: new Date() }
+    const due = new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10)
+    A.createWorkshop(c, { name: 'Xưởng A', area: '', contactName: '', phone: '0903112456' })
+    A.createMaterial(c, { name: 'Vải', unit: 'mét', category: 'vai', minStock: 0, okStock: 0 })
+    const vai = s.materials[0]
+    A.importMaterial(c, { materialId: vai.id, qty: 100, price: 1000, supplier: '' })
+    A.importMaterial(c, { materialId: vai.id, qty: 100, price: 3000, supplier: '' })
+    expect(vai.avgPrice).toBe(2000)
+    const t2 = s.materialTxns[1]
+    expect(A.editImport(c, t2.id, { qty: 100, price: 1000 }).ok).toBe(true)
+    expect(vai.avgPrice).toBe(1000)
+    expect(A.deleteImport(c, t2.id).ok).toBe(true)
+    expect(vai.stock).toBe(100)
+    expect(A.adjustMaterial(c, vai.id, { stock: 90, avgPrice: 1200 }).ok).toBe(true)
+    expect(vai.stock).toBe(90)
+    A.createProduct(c, { sku: 'SP1', name: 'Áo', laborCost: 0, bom: [{ material: vai.id, qtyPerUnit: 1 }] })
+    const p = s.products[0]
+    expect(A.renameProduct(c, p.id, 'Áo mới').ok).toBe(true)
+    expect(A.deleteMaterial(c, vai.id).ok).toBe(false) // còn trong định mức
+    const id = (A.createOrders(c, { workshopId: s.workshops[0].id, dueDate: due, items: [{ productId: p.id, sizes: [{ size: 'M', qty: 10 }] }] }) as { id: string }).id
+    A.issueMaterials(c, [id])
+    A.confirmCut(c, id)
+    A.receive(c, id, { sizes: [{ size: 'M', qty: 10 }] })
+    const o = s.orders[0], bt = o.batches[0]
+    expect(A.saveQC(c, id, bt.id, { lines: [{ kind: 'sua', size: 'M', defect: 'chỉ', qty: 2 }] }).ok).toBe(true)
+    expect(s.repairs.length).toBe(1)
+    expect(A.undoQC(c, id, bt.id).ok).toBe(true)
+    expect(s.repairs.length).toBe(0)
+    expect(s.finishedTxns.reduce((t, x) => t + x.qty, 0)).toBe(0)
+    expect(A.saveQC(c, id, bt.id, { lines: [] }).ok).toBe(true)
+    expect(A.deleteProduct(c, p.id).ok).toBe(false) // có lệnh
+    expect(A.deleteWorkshop(c, s.workshops[0].id).ok).toBe(false)
+    expect(A.deleteOrder(c, id).ok).toBe(false) // chưa hủy
+  })
+})

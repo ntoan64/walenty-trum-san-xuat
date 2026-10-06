@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { CircleCheck, Factory, MapPin, Pencil, Phone, Plus } from "lucide-react";
+import { CircleCheck, Factory, MapPin, Pencil, Phone, Plus, Trash2 } from "lucide-react";
 import { byId, DAY, isRepairLate, sum, type RepairTicket, type Workshop } from "@core";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -221,6 +221,10 @@ export default function WorkshopsPage() {
                       : { title: `Hợp tác lại với ${w.name}?`, confirmLabel: "Hợp tác lại", description: "Xưởng sẽ xuất hiện lại khi tạo lệnh sản xuất." },
                     "workshop.manage", A.toggleWorkshop, w.id,
                   )}>{w.active ? "Ngừng" : "Hợp tác lại"}</Button>
+                  <Button size="sm" variant="destructive" aria-label={`Xóa ${w.name}`} onClick={() => confirmAct(
+                    { title: `Xóa ${w.name}?`, confirmLabel: "Xóa", description: "Chỉ xóa được khi xưởng chưa có lệnh / phiếu sửa nào. Không khôi phục được." },
+                    "workshop.manage", A.deleteWorkshop, w.id,
+                  )}><Trash2 /></Button>
                 </>
               )}
             </div>

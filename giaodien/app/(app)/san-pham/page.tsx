@@ -20,6 +20,7 @@ import { Summary } from "@/components/xf/confirm-provider";
 import { Collapsible } from "@/components/xf/collapsible";
 import { StatusSelect } from "@/components/xf/status-select";
 import { useDraft } from "@/lib/use-draft";
+import { EditDialog } from "@/components/xf/edit-dialog";
 import { CalcHint, EmptyState, Field, NumberField, PageHeader, Panel, StatCard, TableWrap } from "@/components/xf/basics";
 import { finishedStock } from "@/lib/selectors";
 import { cn } from "@/lib/utils";
@@ -219,6 +220,8 @@ export default function ProductsPage() {
   const cats = [...new Set(s.products.map(p => p.category).filter((x): x is string => !!x))].sort((a, b) => a.localeCompare(b, "vi"));
   const [limit, setLimit] = useState(PAGE);
   const [open, setOpen] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<Product | null>(null);
+  const ask = useAskAction();
   const stock = finishedStock(s);
 
   const rows = s.products
@@ -334,7 +337,10 @@ export default function ProductsPage() {
                       </td>
                       <td className="!py-1.5"><ProductThumb p={p} /></td>
                       <td className="min-w-[180px]">
-                        <div className="font-serif font-medium">{p.name}</div>
+                        <div className="font-serif font-medium">{p.name}
+                          {manage && <button type="button" aria-label={`Đổi tên ${p.name}`} onClick={e => { e.stopPropagation(); setRenaming(p); }}
+                            className="ml-1 rounded p-1 align-middle text-subtle hover:bg-surface-3 hover:text-brand"><Pencil className="size-3.5" /></button>}
+                        </div>
                         <div className="num text-[11.5px] text-subtle">{p.variants?.[0]?.sku ?? p.sku}{p.variants && p.variants.length > 1 && ` · ${p.variants.length} phiên bản`}</div>
                       </td>
                       <td className="text-[12.5px] whitespace-nowrap">{p.category ?? <span className="text-subtle">—</span>}</td>
@@ -349,7 +355,11 @@ export default function ProductsPage() {
                         })()}
                       </td>
                       <td onClick={e => e.stopPropagation()}>
-                        <StatusSelect id={`ps-${p.id}`} value={p.status} labels={PRODUCT_STATUS} editable={manage} onChange={v => changeStatus(p.id, v)} />
+                        <div className="flex items-center gap-1">
+                          <StatusSelect id={`ps-${p.id}`} value={p.status} labels={PRODUCT_STATUS} editable={manage} onChange={v => changeStatus(p.id, v)} />
+                          {manage && <button type="button" aria-label="Xóa sản phẩm" onClick={() => act({ title: `Xóa ${p.name}?`, confirmLabel: "Xóa", description: "Xóa sản phẩm cùng định mức, giá, phiên bản. Không khôi phục được." }, "product.manage", A.deleteProduct, p.id)}
+                        className="ml-0.5 rounded p-1 align-middle text-subtle hover:bg-bad/10 hover:text-bad"><Trash2 className="size-3.5" /></button>}
+                        </div>
                       </td>
                     </tr>
                     {isOpen && (
@@ -383,6 +393,8 @@ export default function ProductsPage() {
         <Info className="mt-0.5 size-4 shrink-0 text-brown" />
         Khi tạo lệnh, giá vốn được chốt vào lệnh. Nhập phụ liệu giá mới chỉ ảnh hưởng các lệnh tạo sau đó. Sản phẩm tạm ngưng hoặc ngừng sản xuất không tạo lệnh mới được.
       </p>
+      {renaming && <EditDialog title={`Đổi tên · ${renaming.sku}`} fields={[{ key: "name", label: "Tên sản phẩm", full: true }]} initial={{ name: renaming.name }}
+        onSave={async v => !!(await ask("product.manage", A.renameProduct, renaming.id, v.name))?.ok} onClose={() => setRenaming(null)} />}
     </>
   );
 }

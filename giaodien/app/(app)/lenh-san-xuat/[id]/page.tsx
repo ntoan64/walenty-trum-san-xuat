@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Coins, PackageOpen, Pencil, Plus, Scale, Settings2, Trash2, Wrench } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -433,6 +433,7 @@ export default function OrderDetailPage() {
   const { data: s, can } = useStore();
   const act = useAskAction();
   const actC = useConfirmAction();
+  const router = useRouter();
   const [adminDialog, setAdminDialog] = useState<"edit" | "cancel" | null>(null);
   const o = byId(s.orders, decodeURIComponent(id));
   const now = new Date();
@@ -575,6 +576,11 @@ export default function OrderDetailPage() {
             {o.step !== "done" && <Button size="sm" variant="secondary" onClick={() => setAdminDialog("edit")}><Pencil /> Sửa lệnh</Button>}
             <Button size="sm" variant="destructive" onClick={() => setAdminDialog("cancel")}><Trash2 /> Hủy lệnh</Button>
           </div>
+        ) : can("order.admin") && o.cancelled ? (
+          <Button size="sm" variant="destructive" onClick={async () => {
+            const r = await actC({ title: `Xóa hẳn lệnh ${o.code}?`, confirmLabel: "Xóa hẳn", description: "Lệnh, phiếu sửa và thống kê của lệnh sẽ bị xóa, không khôi phục được." }, "order.admin", A.deleteOrder, o.id);
+            if (r?.ok) router.push("/lenh-san-xuat");
+          }}><Trash2 /> Xóa hẳn lệnh</Button>
         ) : undefined}
       />
       {adminDialog === "edit" && <EditOrderDialog o={o} onClose={() => setAdminDialog(null)} />}
@@ -632,7 +638,11 @@ export default function OrderDetailPage() {
                       <td className="r num">{bt.qc.pass}</td><td className="r num">{bt.qc.sua}</td>
                       <td className="r num">{bt.qc.vai}</td><td className="r num">{bt.qc.hong}</td>
                       <td className="text-xs">{bt.qc.lines?.length ? bt.qc.lines.map((l, k) => <div key={k}><b>{l.size}</b> · {l.defect} ×{l.qty} <PhotoStrip photos={l.photos} size={28} className="ml-1" /></div>) : <span className="text-subtle">{bt.qc.sua + bt.qc.vai + bt.qc.hong ? bt.qc.defect : "Không lỗi"}</span>}</td>
-                      <td><StatusPill tone="ok" dot>Đã QC</StatusPill></td>
+                      <td className="whitespace-nowrap"><StatusPill tone="ok" dot>Đã QC</StatusPill>
+                        {can("order.admin") && o.step !== "done" && <Button size="sm" variant="secondary" className="ml-2" onClick={() => actC(
+                          { title: "Sửa kết quả QC đợt này?", confirmLabel: "Gỡ để QC lại", description: <Summary rows={[["Đợt nhận", `${fmtDT(bt.receivedAt)} · ${bt.received} cái`], ["Kết quả cũ", `${bt.qc!.pass} pass · ${bt.qc!.sua} trả sửa · ${bt.qc!.vai} lỗi vải · ${bt.qc!.hong} hỏng`], ["Sau đó", "Gỡ thành phẩm + phiếu sửa của đợt này, nhập QC lại"]]} /> },
+                          "order.admin", A.undoQC, o.id, bt.id,
+                        )}>Sửa QC</Button>}</td>
                     </>
                   ) : (
                     <>
