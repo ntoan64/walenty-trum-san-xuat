@@ -276,6 +276,7 @@ export interface CustomerRepair {
   code: string // KS-001
   customerName: string
   customerPhone: string
+  orderCode?: string // mã đơn hàng trên Sapo (vd SON15488) để tra lại đơn
   item: string // sản phẩm, vd "Áo sơ mi SM01 trắng"
   size: string
   request: string // khách muốn sửa gì

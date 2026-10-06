@@ -25,11 +25,11 @@ const stepOf = (k: CustomerRepairStatus) => STEPS.find(s => s.key === k)!;
 const isLate = (r: CustomerRepair, now: Date) => r.status !== "done" && r.promisedAt < now;
 
 /* ---------- Nhận đồ từ khách ---------- */
-type Form = { customerName: string; customerPhone: string; item: string; size: string; request: string; note: string; promisedDate: string };
+type Form = { customerName: string; customerPhone: string; orderCode: string; item: string; size: string; request: string; note: string; promisedDate: string };
 
 function ReceiveFromCustomer() {
   const act = useConfirmAction();
-  const blank = (): Form => ({ customerName: "", customerPhone: "", item: "", size: "", request: "", note: "", promisedDate: isoDateVN(new Date(Date.now() + 7 * DAY)) });
+  const blank = (): Form => ({ customerName: "", customerPhone: "", orderCode: "", item: "", size: "", request: "", note: "", promisedDate: isoDateVN(new Date(Date.now() + 7 * DAY)) });
   const [f, setF, clear] = useDraft<Form>("customer:new", blank);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +37,7 @@ function ReceiveFromCustomer() {
       {
         title: "Nhận đồ khách gửi sửa?", confirmLabel: "Nhận đồ",
         description: <Summary rows={[
-          ["Khách", `${f.customerName} · ${f.customerPhone}`], ["Sản phẩm", `${f.item}${f.size ? ` · size ${f.size.toUpperCase()}` : ""}`],
+          ["Khách", `${f.customerName} · ${f.customerPhone}`], ["Mã ĐH Sapo", f.orderCode.trim().toUpperCase() || "—"], ["Sản phẩm", `${f.item}${f.size ? ` · size ${f.size.toUpperCase()}` : ""}`],
           ["Khách muốn sửa", f.request], ...(f.note.trim() ? [["Ghi chú", f.note] as [string, string]] : []),
           ["Hẹn trả", f.promisedDate.split("-").reverse().join("/")],
         ]} />,
@@ -54,6 +54,9 @@ function ReceiveFromCustomer() {
         </Field>
         <Field label="Số điện thoại khách" htmlFor="cr-phone">
           <input id="cr-phone" type="tel" inputMode="tel" className="field-input num" maxLength={15} value={f.customerPhone} onChange={e => setF({ ...f, customerPhone: e.target.value })} />
+        </Field>
+        <Field label="Mã ĐH Sapo" htmlFor="cr-order">
+          <input id="cr-order" className="field-input num uppercase" maxLength={30} placeholder="VD: SON15488" value={f.orderCode} onChange={e => setF({ ...f, orderCode: e.target.value })} />
         </Field>
         <Field label="Sản phẩm" htmlFor="cr-item">
           <input id="cr-item" list="cr-products" className="field-input" maxLength={120} placeholder="VD: Đầm lụa đen DM05" value={f.item} onChange={e => setF({ ...f, item: e.target.value })} />
@@ -166,6 +169,7 @@ function RepairCard({ r, now, onSend, onNote }: { r: CustomerRepair; now: Date; 
         <div><span className="text-muted-foreground">Khách:</span> <b>{r.customerName}</b>{" "}
           <a href={`tel:${r.customerPhone.replace(/\s/g, "")}`} className="num inline-flex items-center gap-0.5 text-brand hover:underline"><Phone className="size-3" />{r.customerPhone}</a>
         </div>
+        {r.orderCode && <div><span className="text-muted-foreground">Mã ĐH Sapo:</span> <b className="num">{r.orderCode}</b></div>}
         <div><span className="text-muted-foreground">Sản phẩm:</span> <b className="font-serif">{r.item}</b>{r.size && <StatusPill tone="muted" className="ml-1">{r.size}</StatusPill>}</div>
         {ws && <div><span className="text-muted-foreground">Xưởng:</span> {ws}</div>}
       </div>
@@ -220,7 +224,7 @@ export default function CustomerRepairsPage() {
   const query = q.trim().toLowerCase();
   const list = all
     .filter(r => (tab === "open" ? r.status !== "done" : r.status === tab))
-    .filter(r => !query || `${r.code} ${r.customerName} ${r.customerPhone} ${r.item} ${r.request}`.toLowerCase().includes(query));
+    .filter(r => !query || `${r.code} ${r.orderCode ?? ""} ${r.customerName} ${r.customerPhone} ${r.item} ${r.request}`.toLowerCase().includes(query));
   const late = all.filter(r => isLate(r, now)).length;
 
   return (
@@ -243,7 +247,7 @@ export default function CustomerRepairsPage() {
       <Panel
         title="Danh sách" icon={Scissors} flush
         actions={
-          <input aria-label="Tìm đồ khách" placeholder="Tìm tên, SĐT, mã KS…" className="field-input !min-h-9 !w-56 !bg-surface !py-1.5"
+          <input aria-label="Tìm đồ khách" placeholder="Tìm tên, SĐT, mã ĐH, mã KS…" className="field-input !min-h-9 !w-56 !bg-surface !py-1.5"
             value={q} onChange={e => setQ(e.target.value)} />
         }
       >

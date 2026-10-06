@@ -218,7 +218,7 @@ export function toggleWorkshop(c: Ctx, id: string): Result {
 }
 
 /* ---------- đồ khách gửi sửa ---------- */
-type CustomerRepairInput = { customerName: string; customerPhone: string; item: string; size: string; request: string; note?: string; promisedDate: string };
+type CustomerRepairInput = { customerName: string; customerPhone: string; orderCode?: string; item: string; size: string; request: string; note?: string; promisedDate: string };
 
 export function createCustomerRepair(c: Ctx, a: CustomerRepairInput): Result {
   const name = a.customerName.trim(), phone = a.customerPhone.trim(), item = a.item.trim(), request = a.request.trim();
@@ -226,6 +226,8 @@ export function createCustomerRepair(c: Ctx, a: CustomerRepairInput): Result {
   if (!/^[0-9 +.]{9,15}$/.test(phone)) return fail("Số điện thoại khách không hợp lệ (9–15 số)");
   if (!item) return fail("Nhập sản phẩm khách gửi");
   if (!request) return fail("Ghi khách muốn sửa gì");
+  const orderCode = (a.orderCode ?? "").trim().toUpperCase();
+  if (orderCode && !/^[A-Z0-9][A-Z0-9_-]{1,29}$/.test(orderCode)) return fail("Mã đơn hàng chỉ gồm chữ, số (vd SON15488)");
   if (name.length > 60 || item.length > LIMITS.name || tooLong(a.size, 10) || request.length > LIMITS.text || tooLong(a.note, LIMITS.text)) return fail("Thông tin quá dài");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(a.promisedDate)) return fail("Chọn ngày hẹn trả khách");
   const promisedAt = new Date(`${a.promisedDate}T23:59:59+07:00`);
@@ -236,11 +238,11 @@ export function createCustomerRepair(c: Ctx, a: CustomerRepairInput): Result {
   const code = `KS-${String(n).padStart(3, "0")}`;
   c.s.customerRepairs ??= [];
   c.s.customerRepairs.push({
-    id: code, code, customerName: name, customerPhone: phone, item, size: a.size.trim().toUpperCase(), request,
+    id: code, code, customerName: name, customerPhone: phone, ...(orderCode ? { orderCode } : {}), item, size: a.size.trim().toUpperCase(), request,
     note: a.note?.trim() || undefined, receivedAt: c.now, promisedAt, status: "received",
     history: [{ at: tick(c), by: c.me, text: `Nhận từ khách: ${request}` }],
   });
-  notify(c, ["quanly", "kho"], `🧵 Đồ khách gửi sửa ${code}: ${item}${a.size ? ` (${a.size})` : ""}\nKhách ${name} · muốn sửa: ${request}\nHẹn trả ${fmtD(promisedAt)}.`);
+  notify(c, ["quanly", "kho"], `🧵 Đồ khách gửi sửa ${code}${orderCode ? ` (ĐH ${orderCode})` : ""}: ${item}${a.size ? ` (${a.size})` : ""}\nKhách ${name} · muốn sửa: ${request}\nHẹn trả ${fmtD(promisedAt)}.`);
   return ok(`Đã nhận ${code} từ khách ${name}`, code);
 }
 
