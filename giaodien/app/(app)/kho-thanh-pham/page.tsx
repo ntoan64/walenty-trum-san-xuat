@@ -12,7 +12,7 @@ import { useStore } from "@/lib/store";
 import { fmtDT, nf, vnd } from "@/lib/format";
 import { finishedStock } from "@/lib/selectors";
 import { ExportButton } from "@/components/xf/export-button";
-import { PageHeader, Panel, StatCard, StatusPill, TableWrap } from "@/components/xf/basics";
+import { EmptyState, PageHeader, Panel, StatCard, StatusPill, TableWrap } from "@/components/xf/basics";
 
 export default function FinishedPage() {
   const { data: s } = useStore();
@@ -25,7 +25,8 @@ export default function FinishedPage() {
   const allRows = s.products.map(p => {
     const web = stock[p.id] ?? 0, c = costOf(p, s.materials);
     return { p, web, c, q: web, v: web * c };
-  }).sort((a, b) => b.q - a.q);
+  }).filter(r => r.q !== 0 || s.finishedTxns.some(t => t.product === r.p.id)) // chỉ sản phẩm đã từng nhập kho thành phẩm
+    .sort((a, b) => b.q - a.q);
   const totalQ = sum(allRows, r => r.q);
   const totalV = sum(allRows, r => r.v);
   const totalWeb = sum(allRows, r => r.web);
@@ -63,6 +64,7 @@ export default function FinishedPage() {
           <table className="wl-table">
             <thead><tr><th className="w-12">Ảnh</th><th>Sản phẩm</th><th>Loại</th><th className="r">Tồn</th><th className="r">Nhập từ SX</th><th className="r">Giá vốn / cái</th><th className="r">Giá trị tồn</th></tr></thead>
             <tbody>
+              {!rows.length && <tr><td colSpan={7}><EmptyState>Kho thành phẩm đang trống. Hàng QC đạt từ lệnh sản xuất sẽ tự nhập vào đây.</EmptyState></td></tr>}
               {rows.slice(0, limit).map(r => (
                 <tr key={r.p.id}>
                   <td className="!py-1.5"><ProductThumb p={r.p} size={36} /></td>
