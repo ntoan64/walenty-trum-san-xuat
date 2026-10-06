@@ -133,7 +133,7 @@ function ShellSkeleton() {
 // Nút tròn mở lại Xưởng Bot khi đã đóng; số đỏ = tin mới từ lần xem trước
 function FeedLauncher({ onOpen, seenAt }: { onOpen: () => void; seenAt: number }) {
   const { data } = useStore();
-  const unread = data.notifications.filter(n => n.sentAt.getTime() > seenAt).length;
+  const unread = data.notifications.filter(n => n.from && n.sentAt.getTime() > seenAt).length;
   return (
     <button
       type="button"

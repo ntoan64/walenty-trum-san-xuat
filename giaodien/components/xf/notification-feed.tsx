@@ -95,8 +95,8 @@ export function NotificationFeed({ onClose }: { onClose?: () => void }) {
       </div>
       {compose && <Composer onDone={() => setCompose(false)} />}
       <ol className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto p-3">
-        {!data.notifications.length && <li className="py-8 text-center text-[13px] text-muted-foreground">Chưa có thông báo nào.</li>}
-        {data.notifications.map((n, i) => {
+        {!data.notifications.some(n => n.from) && <li className="py-8 text-center text-[13px] text-muted-foreground">Chưa có tin nhắn nào.</li>}
+        {data.notifications.filter(n => n.from).map((n, i) => {
           const names = n.users
             ? data.users.filter(u => n.users!.includes(u.id)).map(u => u.name)
             : data.users.filter(u => u.active && n.roles.includes(u.role)).map(u => u.name);

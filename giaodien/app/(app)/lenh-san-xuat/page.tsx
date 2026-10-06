@@ -222,7 +222,7 @@ export default function OrdersPage() {
       <PageHeader
         eyebrow={<>Phân hệ sản xuất <span className="text-subtle">/</span> <span className="text-subtle">Lệnh sản xuất</span></>}
         title="Lệnh sản xuất"
-        desc="Bấm vào một lệnh để xem cân đối số lượng và thao tác."
+        desc="Bấm vào một lệnh để xem tổng thực tế và thao tác."
         aside={
           <div className="grid w-full grid-cols-3 gap-2 min-[1500px]:w-auto">
             <StatCard className="min-[1500px]:min-w-[120px]" label="Đang chạy" value={open.length} unit="lệnh" sub={`${nf(units)} cái`} tone="brand" />

@@ -44,6 +44,7 @@ export async function deliver(notifications: Notification[], users: User[]) {
   if (!telegramEnabled() || !notifications.length) return;
   const jobs: Promise<unknown>[] = [];
   for (const n of notifications) {
+    if (!n.from) continue; // thông báo tự động (lệnh, kho, nhắc việc) không gửi Telegram
     const to = users.filter(u => u.active && u.telegramChatId && u.name !== n.from &&
       (n.users ? n.users.includes(u.id) : n.roles.includes(u.role)));
     const head = n.from ? `✉️ ${n.from} gửi:\n` : "";

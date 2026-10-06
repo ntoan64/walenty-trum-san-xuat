@@ -585,7 +585,7 @@ export default function OrderDetailPage() {
       <StepProgress step={o.step} />
 
       <div className="grid grid-cols-1 items-start gap-5 min-[1000px]:grid-cols-2">
-        <Panel title="Cân đối số lượng" icon={Scale}>
+        <Panel title="Tổng thực tế" icon={Scale}>
           <BalanceBar qty={o.qty} b={b} big />
           <BalanceLegend b={b} />
           <BalanceEquation qty={o.qty} b={b} settled={settled} />

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, EyeOff, KeyRound, UserPlus, Users } from "lucide-react";
+import { Eye, EyeOff, KeyRound, MessageSquare, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
 import { ROLE_LABEL, ROLES, type Role, type User } from "@core";
 import { Button } from "@/components/ui/button";
@@ -116,10 +116,37 @@ function ResetPassword({ user, onClose }: { user: User; onClose: () => void }) {
   );
 }
 
+// Admin nhắn việc cho 1 người: hiện ở cột tin nhắn của người đó + gửi Telegram nếu đã kết nối
+function MessageDialog({ user, onClose }: { user: User; onClose: () => void }) {
+  const act = useConfirmAction();
+  const [text, setText] = useState("");
+  const send = async () => {
+    const r = await act({ title: `Gửi cho ${user.name}?`, confirmLabel: "Gửi", description: <Summary rows={[["Người nhận", user.name], ["Nội dung", text.trim()]]} /> },
+      "notify.send", A.sendMessage, { userIds: [user.id], text });
+    if (r?.ok) onClose();
+  };
+  return (
+    <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="font-serif text-lg text-brand">Nhắn việc cho {user.name}</DialogTitle>
+          <DialogDescription>{user.telegramChatId ? "Gửi vào web và Telegram của người này." : "Người này chưa kết nối Telegram, tin chỉ hiện trên web."}</DialogDescription>
+        </DialogHeader>
+        <textarea aria-label="Nội dung" rows={4} maxLength={1000} className="field-input !min-h-24" placeholder="VD: Chiều nay xuất vải cho LSX-0005, gọi xưởng Vest lấy hàng…" value={text} onChange={e => setText(e.target.value)} />
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose}>Hủy</Button>
+          <Button onClick={send} disabled={!text.trim()}>Gửi</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function UsersPage() {
   const { data: s, meUser } = useStore();
   const act = useConfirmAction();
   const [reset, setReset] = useState<User | null>(null);
+  const [msg, setMsg] = useState<User | null>(null);
   const active = s.users.filter(u => u.active).length;
   const withPw = s.users.filter(u => u.active && u.hasPassword).length;
 
@@ -160,6 +187,7 @@ export default function UsersPage() {
                   <td>{u.active ? <StatusPill tone="ok">Hoạt động</StatusPill> : <StatusPill tone="bad">Đã khóa</StatusPill>}</td>
                   <td className="r whitespace-nowrap">
                     <div className="flex justify-end gap-1.5">
+                      {u.active && u.id !== meUser?.id && <Button size="sm" onClick={() => setMsg(u)}><MessageSquare /> Nhắn việc</Button>}
                       <Button size="sm" variant="secondary" onClick={() => setReset(u)}><KeyRound /> {u.hasPassword ? "Đặt lại MK" : "Cấp MK"}</Button>
                       {u.id !== meUser.id && (
                         <Button size="sm" variant="secondary" onClick={() => act(
@@ -178,6 +206,7 @@ export default function UsersPage() {
         </TableWrap>
       </Panel>
       <BackupPanel />
+      {msg && <MessageDialog user={msg} onClose={() => setMsg(null)} />}
       {reset && <ResetPassword user={reset} onClose={() => setReset(null)} />}
     </>
   );
