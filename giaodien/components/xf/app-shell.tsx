@@ -17,18 +17,25 @@ import { Avatar } from "./avatar";
 import { EmptyState, Panel } from "./basics";
 import { ConfirmProvider } from "./confirm-provider";
 
-export const NAV: { href: string; screen: Screen; label: string; icon: LucideIcon }[] = [
-  { href: "/", screen: "overview", label: "Tổng quan", icon: LayoutDashboard },
-  { href: "/lenh-san-xuat", screen: "orders", label: "Lệnh sản xuất", icon: ClipboardList },
-  { href: "/qc", screen: "qc", label: "QC & trả sửa", icon: ShieldCheck },
-  { href: "/kho-phu-lieu", screen: "materials", label: "Kho nguyên phụ liệu", icon: Layers },
-  { href: "/san-pham", screen: "products", label: "Sản phẩm & định mức", icon: Shirt },
-  { href: "/kho-thanh-pham", screen: "finished", label: "Kho thành phẩm", icon: PackageCheck },
-  { href: "/sua-cho-khach", screen: "customer", label: "Đồ khách gửi sửa", icon: Scissors },
-  { href: "/xuong", screen: "workshops", label: "Xưởng may & NCC", icon: Factory },
-  { href: "/bao-cao", screen: "reports", label: "Báo cáo", icon: ChartColumn },
-  { href: "/lich-su", screen: "history", label: "Lịch sử thao tác", icon: History },
-  { href: "/nhan-vien", screen: "users", label: "Nhân viên", icon: Users },
+// team: nhóm phân hệ trên menu (Team Sản xuất / Team MKT / Team Sale cửa hàng)
+export type Team = "sx" | "mkt" | "sale";
+export const TEAMS: { id: Team; label: string; soon?: string }[] = [
+  { id: "sx", label: "Team Sản xuất" },
+  { id: "mkt", label: "Team MKT", soon: "Đang phát triển" },
+  { id: "sale", label: "Team Sale cửa hàng", soon: "Các mục khác đang phát triển" },
+];
+export const NAV: { href: string; screen: Screen; label: string; icon: LucideIcon; team: Team }[] = [
+  { href: "/", screen: "overview", label: "Tổng quan", icon: LayoutDashboard, team: "sx" },
+  { href: "/lenh-san-xuat", screen: "orders", label: "Lệnh sản xuất", icon: ClipboardList, team: "sx" },
+  { href: "/qc", screen: "qc", label: "QC & trả sửa", icon: ShieldCheck, team: "sx" },
+  { href: "/kho-phu-lieu", screen: "materials", label: "Kho nguyên phụ liệu", icon: Layers, team: "sx" },
+  { href: "/san-pham", screen: "products", label: "Sản phẩm & định mức", icon: Shirt, team: "sx" },
+  { href: "/kho-thanh-pham", screen: "finished", label: "Kho thành phẩm", icon: PackageCheck, team: "sx" },
+  { href: "/sua-cho-khach", screen: "customer", label: "Đồ khách gửi sửa", icon: Scissors, team: "sale" },
+  { href: "/xuong", screen: "workshops", label: "Xưởng may & NCC", icon: Factory, team: "sx" },
+  { href: "/bao-cao", screen: "reports", label: "Báo cáo", icon: ChartColumn, team: "sx" },
+  { href: "/lich-su", screen: "history", label: "Lịch sử thao tác", icon: History, team: "sx" },
+  { href: "/nhan-vien", screen: "users", label: "Nhân viên", icon: Users, team: "sx" },
 ];
 
 export function screenOf(path: string): Screen {
@@ -60,8 +67,13 @@ function Sidebar() {
       )}
 
       <nav aria-label="Phân hệ" className="flex gap-1 overflow-x-auto pb-1 min-[820px]:flex-col min-[820px]:overflow-visible min-[820px]:pb-0">
-        <div className="eyebrow hidden px-2 pb-1 min-[820px]:block">Hệ thống phân hệ</div>
-        {items.map(n => {
+        {TEAMS.map(t => {
+          const list = items.filter(n => n.team === t.id);
+          if (!list.length && !t.soon) return null;
+          return (
+          <div key={t.id} className="contents min-[820px]:flex min-[820px]:flex-col min-[820px]:gap-1 min-[820px]:[&:not(:first-child)]:mt-3">
+            <div className="eyebrow hidden px-2 pb-1 min-[820px]:block">{t.label}</div>
+            {list.map(n => {
           const active = n.screen === cur;
           const Icon = n.icon;
           const badge = badges[n.screen];
@@ -83,6 +95,10 @@ function Sidebar() {
                 </span>
               )}
             </Link>
+          );
+            })}
+            {t.soon && <div className="hidden px-3 py-1 text-[12px] text-subtle italic min-[820px]:block">{t.soon}</div>}
+          </div>
           );
         })}
       </nav>
