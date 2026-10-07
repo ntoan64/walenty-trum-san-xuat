@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ImageOff } from "lucide-react";
+import { ChevronRight, ImageOff } from "lucide-react";
 import { type Product, type ProductVariant } from "@core";
 import { useStore, A } from "@/lib/store";
 import { useAskAction } from "@/lib/use-action";
@@ -75,17 +75,21 @@ export function SapoVariants({ p }: { p: Product }) {
   const { can } = useStore();
   const manage = can("product.manage");
   const vs = p.variants ?? [];
+  const [open, setOpen] = useState(false); // ẩn mặc định, bấm để xem size / SKU
   if (!vs.length) return null;
   return (
     <div className="reveal min-w-0 rounded-xl border border-line bg-surface shadow-[0_4px_16px_rgba(31,27,26,0.05)]">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line px-4 py-3">
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}
+        className={cn("flex w-full flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-left", open && "border-b border-line")}>
+        <ChevronRight className={cn("size-4 text-subtle transition-transform duration-200", open && "rotate-90")} />
         <h3 className="font-serif text-[15px] font-semibold text-brand">Phiên bản</h3>
         <span className="text-xs text-muted-foreground">
           {vs.length} phiên bản
           {p.category && <> · Loại <b className="text-fg">{p.category}</b></>}
         </span>
-      </div>
-      <div className="overflow-x-auto">
+        <span className="ml-auto text-xs text-subtle">{open ? "Thu gọn" : "Bấm để xem"}</span>
+      </button>
+      {open && <div className="overflow-x-auto">
         <table className="w-full text-[12.5px]">
           <thead className="bg-surface-low text-left text-[10.5px] tracking-[0.05em] text-muted-foreground uppercase">
             <tr>
@@ -98,7 +102,7 @@ export function SapoVariants({ p }: { p: Product }) {
             {vs.map(v => <VariantRow key={v.sku} p={p} v={v} manage={manage} />)}
           </tbody>
         </table>
-      </div>
+      </div>}
     </div>
   );
 }
