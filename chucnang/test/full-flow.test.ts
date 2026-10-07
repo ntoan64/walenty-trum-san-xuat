@@ -126,6 +126,14 @@ describe("3. Xưởng, phụ liệu, sản phẩm", () => {
     expect(v2.stock).toBe(400);
   });
 
+  it("xóa phụ liệu là xóa hẳn trong DB, tải lại không hiện lại", async () => {
+    const r = await ok(kho, "createMaterial", { name: "Vải xóa thử", unit: "mét", category: "vai", minStock: 0, okStock: 0 });
+    const id = (r as { id?: string }).id!;
+    await ok(kho, "deleteMaterial", id);
+    const db = await getDb();
+    expect(await db.collection("materials").countDocuments({ _id: id as never })).toBe(0);
+  });
+
   it("ràng buộc: số lượng / đơn giá quá lớn, ngưỡng sai đều bị chặn", async () => {
     const s = await state();
     expect(await fails(kho, "importMaterial", { materialId: s.materials[0].id, qty: 5_000_000, price: 1, supplier: "" })).toMatch(/tối đa/);

@@ -106,17 +106,20 @@ export async function loadState() {
   return r!;
 }
 
-// Ghi những bản ghi có thay đổi (so JSON trước / sau). Không xóa cứng dữ liệu nghiệp vụ.
+// Ghi những bản ghi có thay đổi (so JSON trước / sau); bản ghi bị thao tác xóa đi thì xóa trong DB
 async function writeDiff(before: DataState, after: DataState) {
   const db = await getDb();
   for (const k of KEYS) {
     const old = new Map((before[k] as { id: string }[]).map(d => [d.id, JSON.stringify(d)]));
     const ops: AnyBulkWriteOperation<Document>[] = [];
+    const kept = new Set<string>();
     for (const d of after[k] as { id: string }[]) {
+      kept.add(d.id);
       if (old.get(d.id) === JSON.stringify(d)) continue;
       const { id, ...rest } = d;
       ops.push({ replaceOne: { filter: { _id: id as unknown as Document["_id"] }, replacement: rest, upsert: true } });
     }
+    for (const id of old.keys()) if (!kept.has(id)) ops.push({ deleteOne: { filter: { _id: id as unknown as Document["_id"] } } });
     if (ops.length) await db.collection(COLLECTIONS[k]).bulkWrite(ops, { ordered: false });
   }
 }
