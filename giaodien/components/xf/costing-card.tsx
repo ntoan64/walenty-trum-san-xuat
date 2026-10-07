@@ -91,7 +91,8 @@ export function CostingCard({ p }: { p: Product }) {
   // các "phiên bản tính giá": chung + màu có định mức / bảng giá riêng
   const keys = [...new Set([
     ...(p.bom.length || p.costing?.[""] ? [""] : []),
-    ...colors.filter(c => p.bomByColor?.[c]?.length || p.costing?.[c]),
+    // từ 2 màu trở lên: hiện đủ tab màu để khai báo định mức riêng (vải trắng / vải đen…)
+    ...colors.filter(c => colors.length > 1 || p.bomByColor?.[c]?.length || p.costing?.[c]),
   ])];
   const [k, setK] = useState(keys[0] ?? "");
   const [edit, setEdit] = useState<string | null>(null);
@@ -126,6 +127,9 @@ export function CostingCard({ p }: { p: Product }) {
           )}
         </div>
       </div>
+      {color && !p.bomByColor?.[color]?.length && (
+        <p className="border-b border-line bg-warn-soft/40 px-4 py-2 text-[12.5px] text-warn">Màu {color} chưa có định mức riêng, đang dùng định mức chung. Bấm <b>Sửa định mức ({color})</b> để chọn đúng vải màu này.</p>
+      )}
       {!keys.length && !c ? (
         <p className="px-4 py-3 text-[13px] text-muted-foreground">Chưa có định mức hay bảng tính giá cho mẫu này.</p>
       ) : (
