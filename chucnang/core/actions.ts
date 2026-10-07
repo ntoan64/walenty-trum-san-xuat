@@ -116,7 +116,9 @@ function thresholdError(min: number, ok: number) {
   return null;
 }
 
-export function createMaterial(c: Ctx, a: { code?: string; name: string; unit: string; category: MaterialCategory; minStock: number; okStock?: number }): Result {
+export function createMaterial(c: Ctx, a: { code?: string; name: string; unit: string; category: MaterialCategory; minStock: number; okStock?: number; price?: number; stock?: number; supplier?: string }): Result {
+  if (a.price !== undefined && !(a.price >= 0 && a.price <= 1e9)) return fail("Giá không hợp lệ");
+  if (a.stock !== undefined && !(a.stock >= 0 && a.stock <= 1e7)) return fail("Số lượng không hợp lệ");
   if (!(a.category in MATERIAL_CATEGORIES)) return fail("Chọn loại phụ liệu");
   const code = (a.code?.trim() || nextMaterialCode(a.category, c.s.materials)).toUpperCase(), name = a.name.trim(), unit = a.unit.trim();
   if (!CODE_RE.test(code)) return fail("Mã chỉ gồm chữ, số, dấu gạch ngang (2–20 ký tự)");
@@ -128,8 +130,11 @@ export function createMaterial(c: Ctx, a: { code?: string; name: string; unit: s
   const okStock = a.okStock ?? Math.ceil(a.minStock * 1.3);
   const terr = thresholdError(a.minStock, okStock);
   if (terr) return fail(terr);
-  c.s.materials.push({ id: uid(c, "m"), code, name, unit, category: a.category, minStock: a.minStock, okStock, stock: 0, avgPrice: 0, totalImportQty: 0, totalImportCost: 0, status: "active", lowAlertedAt: null });
-  return ok(`Đã thêm phụ liệu ${code}. Giờ có thể nhập kho.`);
+  const id = uid(c, "m");
+  c.s.materials.push({ id, code, name, unit, category: a.category, minStock: a.minStock, okStock, stock: 0, avgPrice: Math.round(a.price ?? 0), totalImportQty: 0, totalImportCost: 0, status: "active", lowAlertedAt: null });
+  // có số lượng ban đầu thì ghi luôn 1 dòng nhập kho với giá vừa điền
+  if (a.stock) importMaterial(c, { materialId: id, qty: a.stock, price: a.price ?? 0, supplier: a.supplier ?? "" }, true);
+  return ok(a.stock ? `Đã thêm ${code} · ${name}, nhập ${nf(a.stock, 2)} ${unit}` : `Đã thêm phụ liệu ${code} · ${name}`, id);
 }
 
 export function setMaterialStatus(c: Ctx, id: string, status: ItemStatus): Result {

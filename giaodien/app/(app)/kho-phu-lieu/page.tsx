@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ClipboardList, Pencil, Trash2, Receipt, Warehouse } from "lucide-react";
+import { ClipboardList, Pencil, Plus, Trash2, Receipt, Warehouse } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -101,6 +101,64 @@ function EditMaterialDialog({ m, onClose }: { m: Material; onClose: () => void }
   );
 }
 
+/* ---------- Thêm phụ liệu mới: tên, loại, đơn vị, giá (+ số lượng ban đầu nếu có) ---------- */
+function NewMaterialDialog({ onClose }: { onClose: () => void }) {
+  const act = useAskAction();
+  const { data: st } = useStore();
+  const [f, setF] = useState({ name: "", category: "vai" as MaterialCategory, unit: "mét", price: "", stock: "", supplier: "" });
+  const [busy, setBusy] = useState(false);
+  const num = (v: string) => v.trim() ? toNum(v) : undefined;
+  const save = async () => {
+    setBusy(true);
+    const r = await act("material.manage", A.createMaterial, { name: f.name, category: f.category, unit: f.unit, minStock: 0, okStock: 0, price: num(f.price), stock: num(f.stock), supplier: f.supplier });
+    setBusy(false);
+    if (r?.ok) onClose();
+  };
+  return (
+    <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="font-serif text-lg text-brand">Thêm phụ liệu mới</DialogTitle>
+          <DialogDescription>Mã tự sinh theo loại. Điền số lượng nếu đang có hàng, sẽ ghi luôn 1 lần nhập kho.</DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <Field label="Tên phụ liệu" htmlFor="nm-name">
+              <input id="nm-name" autoFocus className="field-input" maxLength={120} placeholder="VD: Vải màu xanh" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} />
+            </Field>
+          </div>
+          <Field label="Loại" htmlFor="nm-cat">
+            <select id="nm-cat" className="field-input" value={f.category} onChange={e => setF({ ...f, category: e.target.value as MaterialCategory, unit: e.target.value === "vai" ? "mét" : "cái" })}>
+              {CATS.map(([k, lb]) => <option key={k} value={k}>{lb}</option>)}
+            </select>
+          </Field>
+          <Field label="Đơn vị tính" htmlFor="nm-unit">
+            <input id="nm-unit" className="field-input" maxLength={20} value={f.unit} onChange={e => setF({ ...f, unit: e.target.value })} />
+          </Field>
+          <Field label="Giá (đ / đơn vị)" htmlFor="nm-price">
+            <input id="nm-price" inputMode="numeric" className="field-input num" placeholder="VD: 68000" value={f.price} onChange={e => setF({ ...f, price: e.target.value })} />
+          </Field>
+          <Field label="Số lượng đang có (không bắt buộc)" htmlFor="nm-stock">
+            <input id="nm-stock" inputMode="decimal" className="field-input num" placeholder="0" value={f.stock} onChange={e => setF({ ...f, stock: e.target.value })} />
+          </Field>
+          {num(f.stock) ? (
+            <div className="col-span-2">
+              <SearchPicker id="nm-sup" label="Nhà cung cấp" placeholder="Gõ tìm trong Xưởng may & NCC…"
+                value={st.workshops.find(w => w.name === f.supplier)?.id}
+                items={st.workshops.filter(w => w.active).map(w => ({ id: w.id, label: w.name, sub: w.kind === "ncc" ? "Nhà cung cấp" : "Xưởng may" }))}
+                onPick={id => setF({ ...f, supplier: st.workshops.find(w => w.id === id)?.name ?? "" })} />
+            </div>
+          ) : null}
+        </div>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose}>Hủy</Button>
+          <Button onClick={save} disabled={busy || !f.name.trim()}>Thêm</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function MaterialsPage() {
   const { data: s, can } = useStore();
   const act = useConfirmAction();
@@ -124,6 +182,7 @@ export default function MaterialsPage() {
 
   const [editing, setEditing] = useState<Material | null>(null);
   const [editTxn, setEditTxn] = useState<MaterialTxn | null>(null);
+  const [adding, setAdding] = useState(false);
   const askAct = useAskAction();
   const confirmDel = useConfirmAction();
 
@@ -199,6 +258,7 @@ export default function MaterialsPage() {
         title="Tồn kho" icon={Warehouse} flush
         actions={
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          {manage && <Button size="sm" onClick={() => setAdding(true)}><Plus /> Thêm phụ liệu mới</Button>}
           <SearchBox options={s.materials.map(m => `${m.code} ${m.name}`)} value={q} onChange={setQ} placeholder="Tìm mã, tên phụ liệu…" label="Tìm phụ liệu" />
           <div role="group" aria-label="Lọc theo loại" className="flex max-w-full gap-1 overflow-x-auto">
             {([["all", "Tất cả"], ...CATS] as [string, string][]).map(([k, label]) => {
@@ -294,6 +354,7 @@ export default function MaterialsPage() {
         </TableWrap>
       </Panel>
       {editing && <EditMaterialDialog m={editing} onClose={() => setEditing(null)} />}
+      {adding && <NewMaterialDialog onClose={() => setAdding(false)} />}
       {editTxn && <EditDialog title={`Sửa phiếu nhập · ${byId(s.materials, editTxn.material)?.code}`}
         desc={<>Nhập ngày {fmtD(editTxn.at)} từ {editTxn.supplier}. Tồn và giá BQ sẽ tính lại theo chênh lệch.</>}
         fields={[{ key: "qty", label: `Số lượng (${byId(s.materials, editTxn.material)?.unit ?? ""})`, type: "number" }, { key: "price", label: "Đơn giá (đ)", type: "number" }]}
