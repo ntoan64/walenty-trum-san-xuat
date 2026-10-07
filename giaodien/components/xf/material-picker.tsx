@@ -20,7 +20,9 @@ export function MaterialPicker({ materials, value, onPick, onNew, label }: {
   const box = useRef<HTMLDivElement>(null);
   const listId = useId();
   const found = materials.filter(m => matches(q, m.code, m.name, m.supplier, m.supplierCode, MATERIAL_CATEGORIES[m.category])).slice(0, MAX);
-  const options = [...found.map(m => ({ m })), ...(q.trim() ? [{ m: undefined }] : [])];
+  // nút tạo mới để trên cùng: nhiều kết quả quá thì nằm cuối bị khuất, không thấy để bấm
+  const exact = found.some(m => m.name.trim().toLowerCase() === q.trim().toLowerCase());
+  const options = [...(q.trim() && !exact ? [{ m: undefined }] : []), ...found.map(m => ({ m }))];
   const pick = (i: number) => {
     const o = options[i];
     if (!o) return;
@@ -42,7 +44,7 @@ export function MaterialPicker({ materials, value, onPick, onNew, label }: {
           onKeyDown={e => {
             if (e.key === "ArrowDown") { e.preventDefault(); setHi(h => Math.min(h + 1, options.length - 1)); }
             else if (e.key === "ArrowUp") { e.preventDefault(); setHi(h => Math.max(h - 1, 0)); }
-            else if (e.key === "Enter" && open && options.length) { e.preventDefault(); pick(hi); }
+            else if (e.key === "Enter" && open && options.length) { e.preventDefault(); pick(hi === 0 && !options[0].m && options[1] ? 1 : hi); } // Enter mặc định chọn kết quả đầu, muốn tạo mới thì bấm chuột
             else if (e.key === "Escape") setOpen(false);
           }}
         />
