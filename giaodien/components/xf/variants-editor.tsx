@@ -18,15 +18,17 @@ export function VariantsEditor({ value, onChange, baseSku }: {
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="eyebrow">Size & SKU riêng từng size</span>
+        <span className="eyebrow">Size · Màu · SKU (ghi màu để làm định mức riêng từng màu)</span>
         {baseSku && <span className="text-[11.5px] text-subtle">SKU chung của mẫu: <b className="num">{baseSku.toUpperCase()}</b></span>}
       </div>
       {value.length > 0 && (
         <div className="mb-2 flex flex-col gap-1.5">
           {value.map((v, i) => (
-            <div key={i} className="row-in grid grid-cols-[80px_minmax(0,1fr)_36px] items-center gap-2">
+            <div key={i} className="row-in grid grid-cols-[70px_minmax(0,1fr)_minmax(0,1fr)_36px] items-center gap-2">
               <input aria-label={`Size dòng ${i + 1}`} placeholder="Size" maxLength={10} className="field-input !min-h-9 !py-1.5 text-center font-bold uppercase"
                 value={v.size} onChange={e => set(i, { size: e.target.value })} />
+              <input aria-label={`Màu dòng ${i + 1}`} placeholder="Màu (Trắng, Đen…)" maxLength={40} className="field-input !min-h-9 !py-1.5"
+                value={v.color ?? ""} onChange={e => set(i, { color: e.target.value })} />
               <input aria-label={`SKU size ${v.size || i + 1}`} placeholder="SKU của size này, VD: PVN5748" maxLength={20} className="field-input num !min-h-9 !py-1.5 uppercase"
                 value={v.sku} onChange={e => set(i, { sku: e.target.value })} />
               <button type="button" aria-label={`Xóa size ${v.size}`} onClick={() => onChange(value.filter((_, j) => j !== i))}
